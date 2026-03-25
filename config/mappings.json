@@ -3,16 +3,37 @@
   "_fallback": { "category": "unknown", "plugin": "unknown", "decision": "pass" },
 
   "tools": {
-    "Read": { "category": "file_ops", "plugin": "core" },
-    "Edit": { "category": "file_ops", "plugin": "core" },
-    "Write": { "category": "file_ops", "plugin": "core" },
-    "Glob": { "category": "file_ops", "plugin": "core" },
-    "Grep": { "category": "file_ops", "plugin": "core" },
-    "Bash": { "category": "bash_exec", "plugin": "core" },
+    "Read":    { "category": "file_ops",  "plugin": "core" },
+    "Edit":    { "category": "file_ops",  "plugin": "core" },
+    "Write":   { "category": "file_ops",  "plugin": "core" },
+    "Glob":    { "category": "file_ops",  "plugin": "core" },
+    "Grep":    { "category": "file_ops",  "plugin": "core" },
+    "Bash":    { "category": "bash_exec", "plugin": "core" },
     "WebSearch": { "category": "web_search", "plugin": "core" },
-    "WebFetch": { "category": "web_fetch", "plugin": "core" },
-    "mcp__jcodemunch__search_symbols": { "category": "code_search", "plugin": "jcodemunch" },
-    "mcp__jdocmunch__search_sections": { "category": "doc_read", "plugin": "jdocmunch" }
+    "WebFetch":  { "category": "web_fetch",  "plugin": "core" },
+
+    "Agent":           { "category": "agent_orchestration", "plugin": "core" },
+    "AskUserQuestion": { "category": "interaction",         "plugin": "core" },
+    "Skill":           { "category": "interaction",         "plugin": "core" },
+
+    "TaskCreate": { "category": "task_management", "plugin": "core" },
+    "TaskGet":    { "category": "task_management", "plugin": "core" },
+    "TaskList":   { "category": "task_management", "plugin": "core" },
+    "TaskUpdate": { "category": "task_management", "plugin": "core" },
+    "TaskOutput": { "category": "task_management", "plugin": "core" },
+    "TaskStop":   { "category": "task_management", "plugin": "core" },
+
+    "CronCreate": { "category": "scheduling", "plugin": "core" },
+    "CronDelete": { "category": "scheduling", "plugin": "core" },
+    "CronList":   { "category": "scheduling", "plugin": "core" },
+
+    "NotebookEdit": { "category": "file_ops",   "plugin": "core" },
+    "LSP":          { "category": "code_search", "plugin": "core" },
+
+    "EnterPlanMode": { "category": "session_control", "plugin": "core" },
+    "ExitPlanMode":  { "category": "session_control", "plugin": "core" },
+    "EnterWorktree": { "category": "session_control", "plugin": "core" },
+    "ExitWorktree":  { "category": "session_control", "plugin": "core" }
   },
 
   "mcp_prefixes": {
