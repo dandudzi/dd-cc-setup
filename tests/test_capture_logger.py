@@ -12,7 +12,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -144,7 +144,6 @@ class TestBuildEntry:
         sample_routing_result,
     ):
         """build_entry() returns dict with all 12 required fields."""
-        start_time = time.time()
         entry = logger.build_entry(
             sample_event,
             sample_classification,
@@ -177,7 +176,6 @@ class TestBuildEntry:
         sample_routing_result,
     ):
         """ts field is int (Unix epoch), not str or float."""
-        start_time = int(time.time())
         entry = logger.build_entry(
             sample_event,
             sample_classification,
@@ -187,7 +185,7 @@ class TestBuildEntry:
 
         assert isinstance(entry["ts"], int)
         # Should be close to current time (within 5 seconds)
-        assert abs(entry["ts"] - start_time) <= 5
+        assert abs(entry["ts"] - int(time.time())) <= 5
 
     def test_event_type_from_stdin(
         self,
@@ -482,7 +480,7 @@ class TestBuildEntry:
 class TestAppendEntry:
     """Test appending entries to JSONL log."""
 
-    def test_append_entry_writes_valid_jsonl(self, temp_log_file, sample_event):
+    def test_append_entry_writes_valid_jsonl(self, temp_log_file):
         """append_entry() writes a valid JSON line."""
         entry = {
             "ts": 1234567890,
