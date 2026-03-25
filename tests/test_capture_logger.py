@@ -101,7 +101,17 @@ class TestLoadMappings:
 
     def test_load_mappings_from_env(self, monkeypatch, tmp_path):
         """load_mappings() uses CC_MAPPINGS_CONFIG env var when set."""
-        config = {"_version": "1.0", "_fallback": {"category": "unknown", "plugin": "unknown", "decision": "pass"}, "tools": {}, "mcp_prefixes": {}, "routing": []}
+        config = {
+            "_version": "1.0",
+            "_fallback": {
+                "category": "unknown",
+                "plugin": "unknown",
+                "decision": "pass",
+            },
+            "tools": {},
+            "mcp_prefixes": {},
+            "routing": [],
+        }
         config_file = tmp_path / "mappings.json"
         config_file.write_text(json.dumps(config))
         monkeypatch.setenv("CC_MAPPINGS_CONFIG", str(config_file))
@@ -605,7 +615,12 @@ class TestMain:
              patch("scripts.capture.logger.append_entry") as mock_append:
 
             mock_stdin.readline.return_value = json.dumps(sample_event)
-            mock_load.return_value = {"tools": {}, "mcp_prefixes": {}, "_fallback": {}, "routing": []}
+            mock_load.return_value = {
+                "tools": {},
+                "mcp_prefixes": {},
+                "_fallback": {},
+                "routing": [],
+            }
             mock_log_path.return_value = Path(temp_log_file)
             mock_classify.return_value = sample_classification
             mock_evaluate.return_value = sample_routing_result
