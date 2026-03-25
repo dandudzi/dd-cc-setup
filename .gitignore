@@ -1,0 +1,82 @@
+### Python ###
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+.eggs/
+
+# uv
+.venv/
+.python-version-uv
+uv.lock
+
+# Distribution / packaging
+.Python
+pip-wheel-metadata/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.lcov
+.tox/
+.nox/
+
+# Ruff
+.ruff_cache/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+.pyre/
+
+### Logs ###
+logs/
+*.log
+*.jsonl
+
+### Environment ###
+.env
+.env.*
+!.env.example
+
+### OS ###
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+
+### IDE ###
+.idea/
+.idea/**
+*.iws
+*.iml
+*.ipr
+.vscode/
+.vscode-test
+
+### Claude ###
+.claude/settings.local.json
+.worktrees/
+
+### Plans ###
+plans/
+
+### Docs (generated) ###
+docs/generated/
