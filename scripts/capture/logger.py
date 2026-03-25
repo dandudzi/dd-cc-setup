@@ -43,7 +43,8 @@ def load_mappings(config_path: Path | None = None) -> dict:
     """Load mappings config from JSON file.
 
     Args:
-        config_path: Path to mappings.json. If None, auto-detects relative to logger.py.
+        config_path: Path to mappings.json. If None, checks CC_MAPPINGS_CONFIG env var,
+                     then auto-detects relative to logger.py.
 
     Returns:
         Mappings dict with keys: tools, mcp_prefixes, _fallback, routing.
@@ -53,8 +54,12 @@ def load_mappings(config_path: Path | None = None) -> dict:
         json.JSONDecodeError: If config file is not valid JSON.
     """
     if config_path is None:
-        # Auto-detect: config/mappings.json relative to logger.py
-        config_path = Path(__file__).parent.parent.parent / "config" / "mappings.json"
+        env_path = os.environ.get("CC_MAPPINGS_CONFIG")
+        if env_path:
+            config_path = Path(env_path)
+        else:
+            # Auto-detect: config/mappings.json relative to logger.py
+            config_path = Path(__file__).parent.parent.parent / "config" / "mappings.json"
 
     with open(config_path) as f:
         return json.load(f)

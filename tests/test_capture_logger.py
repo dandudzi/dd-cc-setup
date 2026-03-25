@@ -99,6 +99,15 @@ class TestLoadMappings:
         assert isinstance(mappings, dict)
         assert "tools" in mappings
 
+    def test_load_mappings_from_env(self, monkeypatch, tmp_path):
+        """load_mappings() uses CC_MAPPINGS_CONFIG env var when set."""
+        config = {"_version": "1.0", "_fallback": {"category": "unknown", "plugin": "unknown", "decision": "pass"}, "tools": {}, "mcp_prefixes": {}, "routing": []}
+        config_file = tmp_path / "mappings.json"
+        config_file.write_text(json.dumps(config))
+        monkeypatch.setenv("CC_MAPPINGS_CONFIG", str(config_file))
+        result = logger.load_mappings()
+        assert result["_version"] == "1.0"
+
     def test_load_mappings_invalid_path_raises(self):
         """load_mappings() with invalid path raises FileNotFoundError."""
         invalid_path = Path("/nonexistent/mappings.json")
