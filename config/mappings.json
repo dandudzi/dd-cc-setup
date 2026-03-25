@@ -1,0 +1,42 @@
+{
+  "_version": "1.0",
+  "_fallback": { "category": "unknown", "plugin": "unknown", "decision": "pass" },
+
+  "tools": {
+    "Read": { "category": "file_ops", "plugin": "core" },
+    "Edit": { "category": "file_ops", "plugin": "core" },
+    "Write": { "category": "file_ops", "plugin": "core" },
+    "Glob": { "category": "file_ops", "plugin": "core" },
+    "Grep": { "category": "file_ops", "plugin": "core" },
+    "Bash": { "category": "bash_exec", "plugin": "core" },
+    "WebSearch": { "category": "web_search", "plugin": "core" },
+    "WebFetch": { "category": "web_fetch", "plugin": "core" },
+    "mcp__jcodemunch__search_symbols": { "category": "code_search", "plugin": "jcodemunch" },
+    "mcp__jdocmunch__search_sections": { "category": "doc_read", "plugin": "jdocmunch" }
+  },
+
+  "mcp_prefixes": {
+    "mcp__jcodemunch__": { "category": "code_search", "plugin": "jcodemunch" },
+    "mcp__jdocmunch__":  { "category": "doc_read",    "plugin": "jdocmunch" },
+    "mcp__exa__":        { "category": "web_search",  "plugin": "exa" },
+    "mcp__context7__":   { "category": "doc_read",    "plugin": "context7" }
+  },
+
+  "routing": [
+    {
+      "matcher": { "tool": "Read", "input_key": "file_path", "pattern": ".*\\.(py|js|ts|go|java|kt|rs|cpp|c|h)$" },
+      "decision": "soft_deny",
+      "handler": "scripts.routing.handlers.route_read_code"
+    },
+    {
+      "matcher": { "tool": "Read", "input_key": "file_path", "pattern": ".*\\.(md|rst|txt)$" },
+      "decision": "soft_deny",
+      "handler": "scripts.routing.handlers.route_read_doc"
+    },
+    {
+      "matcher": { "tool": "WebSearch" },
+      "decision": "deny",
+      "handler": "scripts.routing.handlers.redirect_to_exa"
+    }
+  ]
+}
