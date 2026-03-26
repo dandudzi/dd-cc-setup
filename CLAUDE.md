@@ -6,13 +6,6 @@
 
 ## Project Purpose
 
-Claude Code observability and hook behaviour lab.
-
-- Captures and categorises all Claude tool calls (actions) into plugins/categories
-- First milestone: action categorisation pipeline (capture → categorise → JSON output)
-- Feeds into observability dashboards and webhook behaviour rules
-- Also serves as a reusable template for all Claude Code projects
-
 ## Tech Stack
 
 - Language: Python 3.12+
@@ -22,8 +15,6 @@ Claude Code observability and hook behaviour lab.
 - Log format: JSONL (one JSON object per line)
 
 ## Deployment
-
-Scripts deployed alongside Claude Code hooks via `.claude/settings.local.json`.
 
 ## Coding Rules
 
@@ -42,9 +33,44 @@ Scripts deployed alongside Claude Code hooks via `.claude/settings.local.json`.
 - `config/mappings.json` — tool→category→plugin mappings
 - `docs/` — architecture notes and findings
 
+## Tool Source Repos (local checkouts — use these as source of truth)
+
+All tools used in this project are checked out locally. **Always verify tool capabilities against these repos directly** — do not infer from hooks or mappings.json.
+
+| Tool         | Local Path                | Key docs                                                                                 | Intent / When to use                                                                                                                                                                                                           |
+| ------------ | ------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| jDocMunch    | `~/Repos/jdocmunch-mcp/`  | README.md, USER_GUIDE.md, SPEC.md, ARCHITECTURE.md                                       | Index and retrieve **documentation** files (.md, .rst, .txt) by heading hierarchy. Use instead of Read for any doc file. Primary tool for searching project docs, specs, guides.                                               |
+| jCodeMunch   | `~/Repos/jcodemunch-mcp/` | README.md, USER_GUIDE.md, SPEC.md, CONFIGURATION.md, LANGUAGE_SUPPORT.md, AGENT_HOOKS.md | Index and retrieve **source code** by symbol (function, class, method). Use instead of Read for code files. Enables sliced reads — fetch only the symbol needed, not the whole file.                                           |
+| RTK          | `~/Repos/rtk/`            | README.md, ARCHITECTURE.md, docs/                                                        | **Bash command optimizer**. Rewrites verbose shell commands into token-efficient equivalents. Never blocks; runs as a passthrough rewriter before Bash executes. Use for any shell operation.                                  |
+| context-mode | `~/Repos/context-mode/`   | README.md, docs/, llms.txt, llms-full.txt                                                | **Large-output sandbox**. Runs commands, processes files, and fetches URLs inside a sandbox so raw output never floods the context window. Use for Bash commands producing >20 lines, data files >100 lines, and web fetching. |
+
+When spawning agents to research tool behaviour, point them at these paths. Use jDocMunch MCP to index and search them — do not raw-read large files.
+
+## Hook Decision Types
+
+Three decision types used across all hooks in this project:
+
+| Type          | Exit Code          | Behaviour                                                                                                                                                 | Example                                            |
+| ------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| **HARD_DENY** | `exit 2`           | Tool completely blocked. No retry, no fallback suggested. Claude receives an error and must choose a different tool.                                      | `webfetch-block.sh`, `websearch-block.sh`          |
+| **SOFT_DENY** | `exit 1` + message | Tool blocked this time, but hook outputs a suggestion. A second attempt is often permitted (session-gate pattern). Claude gets guidance, not just a wall. | `unified-read-router.sh`, `jmunch-session-gate.sh` |
+| **PASS**      | `exit 0`           | Tool proceeds normally. Includes passive/observe hooks that never block, RTK allow-list fast-exit, and gate checks when index is fresh.                   | `grep-observe.sh`, `observe.sh`, RTK allow-list    |
+
+**Session-gate retry pattern (SOFT_DENY variant):** `jmunch-session-gate.sh` blocks the first Read call if the jCodeMunch/jDocMunch index is not fresh, then allows a second attempt after the index is rebuilt. This is intentional — it forces an index refresh rather than permanently denying the tool.
+
 ## Task Management
 
 - Use TaskCreate for multi-step work
 - Set dependencies with addBlockedBy for sequential phases
 - Update status to in_progress before starting each task
 - Mark completed only after verification
+
+## What We Know (key facts for routing design)
+
+**Decision factors established by extraction:**
+
+- File extension (code vs doc vs data)
+- File size in lines (threshold unknown — needs quantification)
+- Bash command pattern (bounded vs unbounded output)
+- Intent (read-for-analysis vs read-before-edit vs execute)
+- Session state (index fresh?)

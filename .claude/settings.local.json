@@ -63,7 +63,23 @@
       "mcp__plugin_context-mode_context-mode__ctx_execute_file",
       "mcp__jcodemunch__get_session_stats",
       "mcp__jcodemunch__get_symbol_source",
-      "mcp__jdocmunch__doc_list_repos"
+      "mcp__jdocmunch__doc_list_repos",
+      "Bash(uv run:*)",
+      "Bash(uv sync:*)",
+      "mcp__jdocmunch__doc_index_repo",
+      "Bash(find /Users/daniel/Repos/dd-cc-setup/scripts -type f -name *.py)",
+      "Bash(python3:*)",
+      "Bash(uv pip:*)",
+      "Bash(python:*)",
+      "Bash(/Users/daniel/Repos/dd-cc-setup/.worktrees/feature-action-capture-pipeline/.venv/bin/python -m pytest tests/ -v)",
+      "Bash(.venv/bin/pytest tests/ -v)",
+      "Bash(git merge:*)",
+      "Bash(git -C /Users/daniel/Repos/dd-cc-setup merge feature/action-capture-pipeline)",
+      "mcp__jdocmunch__get_section_context"
     ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "context7@claude-plugins-official": true
   }
 }
