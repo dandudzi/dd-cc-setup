@@ -2,9 +2,15 @@
 
 ## Rules to follow
 
-- Check todo list before starting each step
+- Check `todo.md` before starting each step — it is the **source of truth** for progress
+- **NO CODE until explicitly told.** We are in the exploration/definition phase. Code is only written when the user says so.
+- All plans must be written to files in `docs/plans/` and each plan **must link back** to its corresponding step in `todo.md` (e.g., `See: todo.md step 1.2`)
+- Every step in `todo.md` that produces a plan must link forward to that plan file (e.g., `Plan: docs/plans/001-hook-routing.md`)
+- When completing a todo step, mark it done in `todo.md` immediately
 
 ## Project Purpose
+
+_To be defined — this is our current step. See `todo.md` step 1._
 
 ## Tech Stack
 
