@@ -27,6 +27,8 @@ class HookInput:
 
     @classmethod
     def from_dict(cls, data: dict) -> HookInput:
+        if not isinstance(data, dict):
+            raise TypeError(f"HookInput.from_dict expects a dict, got {type(data).__name__}")
         known = {
             "session_id", "tool_use_id", "tool_name", "tool_input",
             "hook_event_name", "cwd", "transcript_path", "permission_mode",

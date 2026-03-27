@@ -82,7 +82,23 @@ class TestHookInput:
     def test_hookinput_is_immutable(self):
         hi = HookInput.from_dict(_hook_input())
         with pytest.raises((AttributeError, TypeError)):
-            setattr(hi, "tool_name", "Write")
+            hi.tool_name = "Write"
+
+    def test_from_dict_raises_typeerror_for_list(self):
+        with pytest.raises(TypeError, match="expects a dict"):
+            HookInput.from_dict([])
+
+    def test_from_dict_raises_typeerror_for_string(self):
+        with pytest.raises(TypeError, match="expects a dict"):
+            HookInput.from_dict("x")
+
+    def test_from_dict_raises_typeerror_for_int(self):
+        with pytest.raises(TypeError, match="expects a dict"):
+            HookInput.from_dict(1)
+
+    def test_from_dict_raises_typeerror_for_none(self):
+        with pytest.raises(TypeError, match="expects a dict"):
+            HookInput.from_dict(None)
 
 
 class TestBuildInitialContext:
@@ -220,4 +236,4 @@ class TestBuildHookResponse:
     def test_hookresponse_is_immutable(self):
         resp = build_hook_response(_context())
         with pytest.raises((AttributeError, TypeError)):
-            setattr(resp, "exit_code", 1)
+            resp.exit_code = 1
