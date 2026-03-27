@@ -1,8 +1,17 @@
-"""
-Matcher functions for the routing engine.
+"""Public matcher exports used by config/mappings.json dotted paths."""
 
-Each matcher takes a context dict and returns True if its rule applies.
-Matchers are referenced by dotted name in config/mappings.json (e.g. matchers.is_code_file).
+from .base import (
+    always,
+    is_code_file,
+    is_doc_file,
+    is_large_data_file,
+    is_unbounded_bash,
+)
 
-Phase 1 will implement the individual matcher functions in this package.
-"""
+__all__ = [
+    "always",
+    "is_code_file",
+    "is_doc_file",
+    "is_large_data_file",
+    "is_unbounded_bash",
+]
