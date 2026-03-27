@@ -193,22 +193,22 @@
 | D1.1 | OD.1 — Hook ordering: continuous-learning observe.sh fires before routing hooks | Accept noise in Phase 1. Phase 2 task 2.11: reorder so routing fires first in new system. | 2026-03-27 | 2.11 |
 | D1.2 | OD.2 — Unified log vs separate routing-decisions.jsonl | **Revised (2026-03-27):** New file `~/.claude/logs/actions.jsonl` (configurable via `CC_ACTION_LOG`). Python engine writes JSONL directly — no lib/log.sh dependency. See spec `docs/superpowers/specs/2026-03-27-observability-pipeline-design.md`. | 2026-03-27 | 1.1 |
 | D1.3 | OD.3 — Tier 2/3 jCodeMunch extensions worth routing? | Tier 1 only in Phase 1. Log Tier 2/3 hits with `tier: 2/3` tag. Promote in Phase 2 if 1.4 validates. | 2026-03-27 | 1.2, 2.2 |
-| D1.4 | OD.4 — `tool_use_id` available in hook stdin? | Empirically test (task 1.5). If present: use as pre→post correlation key. If absent: `session_id + tool_name + sha256(tool_input)`. | 2026-03-27 | 1.5 |
+| D1.4 | OD.4 — `tool_use_id` available in hook stdin? | **Resolved (task 1.5):** Present. Use `tool_use_id` as pre→post correlation key. Full fields confirmed: `session_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `tool_name`, `tool_input`, `tool_use_id`. | 2026-03-27 | 1.5 |
 
 ### 1.1 — Build the observation hook script(s)
 - **Status:** ✅ Done (2026-03-27)
 - **Blocked by:** 0.12, 0.13
 - **Goal:** Hook scripts that intercept tool calls and log them as JSON
 - **Plan:** `docs/superpowers/specs/2026-03-27-observability-pipeline-design.md`
-- **Key context from Phase 0:**
-  - Import `lib/log.sh` (`~/.claude/hooks/lib/log.sh`) — proven infrastructure, all current observers use it
-  - Log to `~/.claude/hooks/hook-events.jsonl` — extend existing schema, don't create new file
-  - Extended schema fields to add: `tool`, `tool_use_id`, `session_id`, `intent`, `previous_tool`, `is_retry`, `category`, `decision_factors`, `redirect_to`
-  - 7 hook events needed: PreToolUse, PostToolUse, PostToolUseFailure, SessionStart, PreCompact, PostCompact, Stop
-  - Execution order: routing hooks must slot in AFTER `jmunch-session-gate` in settings.json hook list
-  - **D1.1 resolved:** Accept noise in Phase 1 — continuous-learning `observe.sh` fires before routing hooks and will log blocked calls as "attempted". Phase 2 task 2.11 fixes ordering in the new system.
-  - **D1.2 resolved:** Extend `hook-events.jsonl` (not a new file). Add routing fields into `detail`: `tool`, `category`, `intent`, `previous_tool`, `is_retry`, `decision_factors`, `redirect_to`.
-  - **D1.4 resolved (pending empirical test):** See task 1.5. If `tool_use_id` in stdin: use as correlation key. If absent: `session_id + tool_name + sha256(tool_input)`.
+- **What was built:**
+  - ~~Import `lib/log.sh`~~ → Pure Python logger (`scripts/observe/logger.py`)
+  - ~~Log to `~/.claude/hooks/hook-events.jsonl`~~ → New file `~/.claude/logs/actions.jsonl` (D1.2 revised)
+  - Schema fields implemented: `tool_name`, `tool_use_id`, `session_id`, `category`, `decision`, `redirect_to`, `decision_factors` (nested dict), `errors`, `steps_trace`, `latency_ms`
+  - 7 hook events originally planned — **Phase 1: PreToolUse only** (others deferred to task 2.14)
+  - Execution order: `jmunch-session-gate` → `scripts/engine.py` (single catch-all hook)
+  - **D1.1 resolved:** Accept noise in Phase 1 — continuous-learning `observe.sh` fires before routing hooks and will log blocked calls as "attempted". Phase 2 task 2.11 fixes ordering.
+  - **D1.2 resolved:** New file `~/.claude/logs/actions.jsonl`. Python engine writes directly — no `lib/log.sh`.
+  - **D1.4 resolved:** `tool_use_id` IS present. Used as correlation key in `HookInput` and every log entry.
 
 ### 1.2 — Implement the categorization engine
 - **Status:** ✅ Done (2026-03-27)
@@ -226,7 +226,7 @@
 
 ### 1.3 — Token savings measurement
 - **Status:** 🔴 Not started
-- **Blocked by:** 1.1, 1.2
+- **Blocked by:** ~~1.1, 1.2~~ (both done — unblocked)
 - **Goal:** Calculate and report how much was saved, what's still leaking
 - **Plan:** _TBD_
 - **Key context from Phase 0:**
@@ -270,7 +270,7 @@
 
 ### 1.6 — Implement transcript-based decision factors (previous_tool, is_retry)
 - **Status:** 🔴 Not started
-- **Blocked by:** 1.1, 1.2
+- **Blocked by:** ~~1.1, 1.2~~ (both done — unblocked)
 - **Goal:** Tail the session transcript to extract `previous_tool` and `is_retry` values that drive the Intent decision factor (highest priority in the 5-factor order).
 - **Plan:** _TBD_
 - **Notes:**
@@ -489,7 +489,7 @@
 
 ### 2.12 — Debug logging levels (configurable verbosity)
 - **Status:** 🔴 Not started
-- **Blocked by:** 1.1, 1.2
+- **Blocked by:** ~~1.1, 1.2~~ (both done — unblocked)
 - **Goal:** Expose `observe.level` (info/debug) via an environment variable so verbosity can be changed at runtime without editing mappings.json.
 - **Plan:** _TBD_
 - **Notes:**
@@ -500,7 +500,7 @@
 
 ### 2.13 — Logs retention / rotation / cleanup
 - **Status:** 🔴 Not started
-- **Blocked by:** 1.1
+- **Blocked by:** ~~1.1~~ (done — unblocked)
 - **Goal:** Define max size, rotation policy, and cleanup strategy for `~/.claude/logs/actions.jsonl`.
 - **Plan:** _TBD_
 - **Notes:**

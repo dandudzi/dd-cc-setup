@@ -3,7 +3,7 @@
 ## Rules to follow
 
 - Check `todo.md` before starting each step — it is the **source of truth** for progress
-- **Phase 1 (Observability) is active — coding follows TDD skill.** Phase 0 complete.
+- **Phase 1 (Observability) in progress.** Tasks 1.1/1.2 complete (pipeline live). Remaining: 1.3, 1.4, 1.5b, 1.6. Phase 0 complete.
 - All plans must be written to files in `docs/plans/` and each plan **must link back** to its corresponding step in `todo.md` (e.g., `See: todo.md step 1.2`)
 - Every step in `todo.md` that produces a plan must link forward to that plan file (e.g., `Plan: docs/plans/001-hook-routing.md`)
 - When completing a todo step, mark it done in `todo.md` immediately
@@ -47,10 +47,13 @@ The core idea: hooks intercept Claude's tool calls, categorize them against a JS
 ## Reference Docs
 
 - `config/mappings.json` — v2.0 schema: tool → matchers[] → steps[] (routing metadata only)
-- `scripts/engine.py` — pipeline walker (Phase 1 implements logic)
+- `scripts/engine.py` — pipeline walker: parse stdin → match → run steps → log → emit response
+- `scripts/models.py` — HookInput, HookResponse, build_initial_context(), build_observation_entry(), build_hook_response()
+- `scripts/observe/logger.py` — write_log(), write_error_log(); logs to `~/.claude/logs/actions.jsonl`
 - `scripts/matchers/base.py` — matcher interface: `(context: dict) -> bool`
 - `scripts/steps/base.py` — step interface: `(context: dict) -> dict`, 4 types: check / transform / decide / resolve
 - `docs/plans/009-phase0-synthesis.md` — complete Phase 0 findings and all decisions
+- `docs/superpowers/specs/2026-03-27-observability-pipeline-design.md` — Phase 1 design spec (authoritative)
 - `docs/` — architecture notes and findings
 
 ## Tool Source Repos (local checkouts — use these as source of truth)
@@ -75,6 +78,8 @@ Three decision types used across all hooks in this project:
 | **HARD_DENY** | `exit 2`           | Tool completely blocked. No retry, no fallback suggested. Claude receives an error and must choose a different tool.                                      | `webfetch-block.sh`, `websearch-block.sh`          |
 | **SOFT_DENY** | `exit 1` + message | Tool blocked this time, but hook outputs a suggestion. A second attempt is often permitted (session-gate pattern). Claude gets guidance, not just a wall. | `unified-read-router.sh`, `jmunch-session-gate.sh` |
 | **PASS**      | `exit 0`           | Tool proceeds normally. Includes passive/observe hooks that never block, RTK allow-list fast-exit, and gate checks when index is fresh.                   | `grep-observe.sh`, `observe.sh`, RTK allow-list    |
+
+> **Phase 1 note:** `scripts/engine.py` always exits 0 regardless of decision type (observe-only mode). Exit codes 1 and 2 are Phase 2+ enforcement behavior. The engine logs decisions but does not block tools in Phase 1.
 
 **Session-gate retry pattern (SOFT_DENY variant):** `jmunch-session-gate.sh` blocks the first Read call if the jCodeMunch/jDocMunch index is not fresh, then allows a second attempt after the index is rebuilt. This is intentional — it forces an index refresh rather than permanently denying the tool.
 
@@ -121,6 +126,6 @@ Three decision types used across all hooks in this project:
 - Data files: >100 lines → context-mode `ctx_execute_file`
 
 **Hook execution order (PreToolUse):**
-`jmunch-session-gate` → `continuous-learning observe.sh` → routing hooks (tool-specific)
+`jmunch-session-gate` → `scripts/engine.py` (single catch-all hook, handles all tool routing internally via `config/mappings.json`) → `continuous-learning observe.sh`
 
-**Logging:** `lib/log.sh` → `~/.claude/hooks/hook-events.jsonl`. Add routing fields to `detail` dict — do NOT create a separate log file (D1.2).
+**Logging:** `scripts/observe/logger.py` → `~/.claude/logs/actions.jsonl` (configurable via `CC_ACTION_LOG`). Pure Python, no `lib/log.sh` dependency. One JSONL entry per PreToolUse event.
