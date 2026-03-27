@@ -196,10 +196,10 @@
 | D1.4 | OD.4 — `tool_use_id` available in hook stdin? | Empirically test (task 1.5). If present: use as pre→post correlation key. If absent: `session_id + tool_name + sha256(tool_input)`. | 2026-03-27 | 1.5 |
 
 ### 1.1 — Build the observation hook script(s)
-- **Status:** 🔴 Not started
+- **Status:** ✅ Done (2026-03-27)
 - **Blocked by:** 0.12, 0.13
 - **Goal:** Hook scripts that intercept tool calls and log them as JSON
-- **Plan:** _TBD_
+- **Plan:** `docs/superpowers/specs/2026-03-27-observability-pipeline-design.md`
 - **Key context from Phase 0:**
   - Import `lib/log.sh` (`~/.claude/hooks/lib/log.sh`) — proven infrastructure, all current observers use it
   - Log to `~/.claude/hooks/hook-events.jsonl` — extend existing schema, don't create new file
@@ -211,10 +211,10 @@
   - **D1.4 resolved (pending empirical test):** See task 1.5. If `tool_use_id` in stdin: use as correlation key. If absent: `session_id + tool_name + sha256(tool_input)`.
 
 ### 1.2 — Implement the categorization engine
-- **Status:** 🔴 Not started
+- **Status:** ✅ Done (2026-03-27)
 - **Blocked by:** 0.12, 0.13
 - **Goal:** Python pipeline walker that reads config/mappings.json and chains steps per matcher
-- **Plan:** _TBD_
+- **Plan:** `docs/superpowers/specs/2026-03-27-observability-pipeline-design.md`
 - **Key context from Phase 0:**
   - All steps share the same Python interface: `step(context: dict) → dict` (D0.5)
   - 4 step types: check, transform, decide, resolve — same interface, different semantics

@@ -1,8 +1,29 @@
-"""
-Step functions for the routing engine.
+"""Public step exports used by config/mappings.json dotted paths."""
 
-Steps are the pipeline units executed by the engine after a matcher fires.
-Each step is referenced by dotted name in config/mappings.json (e.g. steps.soft_deny_redirect).
+from .base import (
+    check_code_index_fresh,
+    check_doc_index_fresh,
+    enrich_file_metadata,
+    format_context_mode_web_redirect,
+    format_deny_message,
+    format_exa_redirect,
+    format_redirect_message,
+    hard_deny,
+    pass_through,
+    redirect_to_context_mode,
+    soft_deny_redirect,
+)
 
-Phase 1 will implement the individual step functions in this package.
-"""
+__all__ = [
+    "check_code_index_fresh",
+    "check_doc_index_fresh",
+    "enrich_file_metadata",
+    "format_context_mode_web_redirect",
+    "format_deny_message",
+    "format_exa_redirect",
+    "format_redirect_message",
+    "hard_deny",
+    "pass_through",
+    "redirect_to_context_mode",
+    "soft_deny_redirect",
+]
