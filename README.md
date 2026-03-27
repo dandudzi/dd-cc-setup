@@ -1,25 +1,30 @@
 # dd-cc-setup
 
-Claude Code observability and hook behaviour lab. Captures, categorises, and analyses all Claude tool calls to build observability pipelines and define webhook behaviour.
+Claude Code observability and hook routing lab. Every Claude tool call is intercepted, classified, and logged — with routing decisions that steer work toward token-efficient tools (jCodeMunch, jDocMunch, context-mode).
 
 ## What it does
 
-1. **Capture** — a hook script intercepts every Claude tool call and logs it as JSONL
-2. **Categorise** — a Python script reads the log and maps each action to a category/plugin using `config/mappings.json`
-3. **Observe** — structured output feeds dashboards and webhook rules
+1. **Intercept** — `scripts/engine.py` runs as a PreToolUse hook for every Claude tool call
+2. **Classify** — the engine walks `config/mappings.json` (v2 schema: matchers → steps) to make a routing decision
+3. **Log** — every decision is written to `~/.claude/logs/actions.jsonl` as JSONL via `scripts/observe/logger.py`
+
+Phase 1 is observe-only: the engine always exits 0 and never blocks tools. Routing enforcement comes in Phase 2.
 
 ## Structure
 
 ```
 dd-cc-setup/
 ├── config/
-│   └── mappings.json        # tool→category→plugin mappings
+│   └── mappings.json        # v2 routing config: tool → matchers[] → steps[]
 ├── scripts/
-│   ├── capture/             # hook logger (writes raw JSONL)
-│   ├── categorise/          # categorisation script
+│   ├── engine.py            # pipeline walker (PreToolUse hook entrypoint)
+│   ├── models.py            # HookInput, HookResponse, context builders
+│   ├── matchers/            # matcher functions: (context) -> bool
+│   ├── steps/               # step functions: (context) -> dict
+│   ├── observe/             # logger: writes actions.jsonl
 │   └── webhooks/            # webhook handler experiments
 ├── tests/                   # pytest tests
-├── docs/                    # architecture notes
+├── docs/                    # architecture notes and plans
 └── pyproject.toml
 ```
 
@@ -36,16 +41,9 @@ Add to `.claude/settings.local.json`:
 ```json
 {
   "hooks": {
-    "PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": "uv run python scripts/capture/logger.py"}]}],
-    "PostToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": "uv run python scripts/capture/logger.py"}]}]
+    "PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": "uv run python scripts/engine.py"}]}]
   }
 }
-```
-
-## Running categorisation
-
-```bash
-uv run python scripts/categorise/categorise.py --input logs/actions.jsonl --output logs/categorised.jsonl
 ```
 
 ## Tests

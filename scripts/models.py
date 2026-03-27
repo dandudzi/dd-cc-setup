@@ -26,7 +26,9 @@ class HookInput:
     raw: dict = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: dict) -> HookInput:
+    def from_dict(cls, data: object) -> HookInput:
+        if not isinstance(data, dict):
+            raise TypeError(f"HookInput.from_dict expects a dict, got {type(data).__name__}")
         known = {
             "session_id", "tool_use_id", "tool_name", "tool_input",
             "hook_event_name", "cwd", "transcript_path", "permission_mode",
@@ -79,6 +81,7 @@ def build_initial_context(hook_input: HookInput) -> dict:
         "redirect_to": None,
         "steps_trace": [],
         "errors": [],
+        "warnings": [],
     }
 
 
@@ -119,6 +122,7 @@ def build_observation_entry(context: dict, start_time: float) -> dict:
             "index_fresh": context.get("index_fresh"),
         },
         "errors": context.get("errors", []),
+        "warnings": context.get("warnings", []),
         "steps_trace": context.get("steps_trace", []),
         "latency_ms": latency_ms,
     }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 CODE_EXTENSIONS = {
@@ -29,13 +30,9 @@ CODE_EXTENSIONS = {
     ".sh",
     ".sql",
     ".swift",
-    ".toml",
     ".ts",
     ".tsx",
     ".vue",
-    ".xml",
-    ".yaml",
-    ".yml",
 }
 DOC_EXTENSIONS = {
     ".adoc",
@@ -63,27 +60,24 @@ DATA_EXTENSIONS = {
     ".yaml",
     ".yml",
 }
-UNBOUNDED_BASH_TOKENS = {
-    "cat",
-    "find",
-    "git diff",
-    "git log",
-    "grep",
-    "head",
-    "jq",
-    "ls -R",
-    "npm test",
-    "pytest",
-    "rg",
-    "tail",
-}
+# Single-word tokens use word-boundary regex; multi-word tokens use substring matching.
+_UNBOUNDED_SINGLE_WORD = {"cat", "find", "grep", "head", "jq", "pytest", "rg", "tail"}
+_UNBOUNDED_MULTI_WORD = {"git diff", "git log", "ls -R", "npm test"}
+# Compiled once at import time; avoids re-compiling inside the hot path.
+_UNBOUNDED_PATTERNS = [re.compile(rf"\b{re.escape(t)}\b") for t in _UNBOUNDED_SINGLE_WORD]
 
 
 def _file_path_from_context(context: dict) -> Path | None:
     path = context.get("tool_input", {}).get("file_path")
     if not path:
         return None
-    return Path(path)
+    p = Path(path)
+    # Anchor relative paths to context cwd if provided
+    if not p.is_absolute():
+        cwd = context.get("cwd", "")
+        if cwd:
+            p = Path(cwd) / p
+    return p
 
 
 def _line_count(path: Path) -> int | None:
@@ -117,13 +111,21 @@ def is_large_data_file(context: dict) -> bool:
 
 
 def is_unbounded_bash(context: dict) -> bool:
-    """Match shell commands that are likely to emit large output."""
+    """Match shell commands that are likely to emit large output.
+
+    Uses word-boundary regex matching for single-word tokens to avoid
+    false positives (e.g., 'cat' matching 'category'). Multi-word tokens
+    like 'git diff' and 'npm test' use substring matching since spaces
+    act as natural separators.
+    """
     command = context.get("tool_input", {}).get("command", "")
     if not isinstance(command, str):
         return False
 
     normalized = " ".join(command.split())
-    return any(token in normalized for token in UNBOUNDED_BASH_TOKENS)
+    return any(p.search(normalized) for p in _UNBOUNDED_PATTERNS) or any(
+        t in normalized for t in _UNBOUNDED_MULTI_WORD
+    )
 
 
 def always(_: dict) -> bool:

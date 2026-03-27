@@ -2,6 +2,7 @@
 import time
 
 import pytest
+
 from scripts.models import (
     HookInput,
     build_hook_response,
@@ -48,6 +49,7 @@ def _context(**overrides) -> dict:
         "redirect_to": None,
         "steps_trace": [],
         "errors": [],
+        "warnings": [],
     }
     base.update(overrides)
     return base
@@ -81,6 +83,22 @@ class TestHookInput:
         hi = HookInput.from_dict(_hook_input())
         with pytest.raises((AttributeError, TypeError)):
             hi.tool_name = "Write"
+
+    def test_from_dict_raises_typeerror_for_list(self):
+        with pytest.raises(TypeError, match="expects a dict"):
+            HookInput.from_dict([])
+
+    def test_from_dict_raises_typeerror_for_string(self):
+        with pytest.raises(TypeError, match="expects a dict"):
+            HookInput.from_dict("x")
+
+    def test_from_dict_raises_typeerror_for_int(self):
+        with pytest.raises(TypeError, match="expects a dict"):
+            HookInput.from_dict(1)
+
+    def test_from_dict_raises_typeerror_for_none(self):
+        with pytest.raises(TypeError, match="expects a dict"):
+            HookInput.from_dict(None)
 
 
 class TestBuildInitialContext:
@@ -170,6 +188,33 @@ class TestBuildObservationEntry:
         ctx = _context(steps_trace=[])
         entry = build_observation_entry(ctx, time.time())
         assert entry["steps_trace"] == []
+
+
+class TestBuildObservationEntryWarnings:
+    def test_stat_warning_does_not_set_error_event_type(self):
+        """Warnings (like stat failures) should not override event_type to 'error'."""
+        ctx = _context(
+            matcher_id="read_code_file",
+            decision="soft_deny",
+            warnings=["unable to stat file: /missing.py"],
+            errors=[],  # No errors, only warnings
+        )
+        entry = build_observation_entry(ctx, time.time())
+        assert entry["event_type"] == "decision", "warnings should not set event_type=error"
+        assert "warnings" in entry, "warnings should be present in output"
+        assert entry["warnings"] == ["unable to stat file: /missing.py"]
+
+    def test_warnings_included_in_observation_entry(self):
+        """Warnings field should be included in the output dict."""
+        ctx = _context(warnings=["warning 1", "warning 2"])
+        entry = build_observation_entry(ctx, time.time())
+        assert entry["warnings"] == ["warning 1", "warning 2"]
+
+    def test_warnings_default_to_empty_list(self):
+        """If no warnings present, should default to empty list."""
+        ctx = _context()  # No warnings set
+        entry = build_observation_entry(ctx, time.time())
+        assert entry["warnings"] == []
 
 
 class TestBuildHookResponse:
