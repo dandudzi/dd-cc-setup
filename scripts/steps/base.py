@@ -58,7 +58,7 @@ def enrich_file_metadata(context: dict) -> dict:
         if cwd:
             path = Path(cwd) / path
 
-    updated = {"file_ext": path.suffix.lower()}
+    updated: dict[str, object] = {"file_ext": path.suffix.lower()}
     try:
         updated["file_size"] = path.stat().st_size
     except OSError:
