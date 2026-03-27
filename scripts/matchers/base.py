@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 CODE_EXTENSIONS = {
@@ -29,13 +30,9 @@ CODE_EXTENSIONS = {
     ".sh",
     ".sql",
     ".swift",
-    ".toml",
     ".ts",
     ".tsx",
     ".vue",
-    ".xml",
-    ".yaml",
-    ".yml",
 }
 DOC_EXTENSIONS = {
     ".adoc",
@@ -117,13 +114,32 @@ def is_large_data_file(context: dict) -> bool:
 
 
 def is_unbounded_bash(context: dict) -> bool:
-    """Match shell commands that are likely to emit large output."""
+    """Match shell commands that are likely to emit large output.
+
+    Uses word-boundary regex matching for single-word tokens to avoid
+    false positives (e.g., 'cat' matching 'category'). Multi-word tokens
+    like 'git diff' and 'npm test' use substring matching since spaces
+    act as natural separators.
+    """
     command = context.get("tool_input", {}).get("command", "")
     if not isinstance(command, str):
         return False
 
     normalized = " ".join(command.split())
-    return any(token in normalized for token in UNBOUNDED_BASH_TOKENS)
+
+    # Single-word tokens: use word-boundary regex to avoid false positives
+    single_word_tokens = {"cat", "find", "grep", "head", "jq", "pytest", "rg", "tail"}
+    for token in single_word_tokens:
+        pattern = re.compile(rf"\b{re.escape(token)}\b")
+        if pattern.search(normalized):
+            return True
+
+    # Multi-word tokens: use substring matching (spaces are natural separators)
+    multi_word_tokens = {"git diff", "git log", "ls -R", "npm test"}
+    if any(token in normalized for token in multi_word_tokens):
+        return True
+
+    return False
 
 
 def always(_: dict) -> bool:

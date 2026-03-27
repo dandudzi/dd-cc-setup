@@ -167,3 +167,42 @@ def test_unbounded_bash_no_command():
 
 def test_always_with_populated_dict():
     assert always({"tool_name": "Read", "tool_input": {"file_path": "/tmp/x.py"}}) is True
+
+
+# Finding 6: yaml/toml/xml extension overlap fix tests
+def test_is_code_file_excludes_yaml():
+    """YAML is a data/config format, not code."""
+    assert is_code_file(_context(tool_input={"file_path": "/tmp/config.yaml"})) is False
+    assert is_code_file(_context(tool_input={"file_path": "/tmp/settings.yml"})) is False
+
+
+def test_is_code_file_excludes_toml():
+    """TOML is a data/config format, not code."""
+    assert is_code_file(_context(tool_input={"file_path": "/tmp/pyproject.toml"})) is False
+
+
+def test_is_code_file_excludes_xml():
+    """XML is a data/config format, not code."""
+    assert is_code_file(_context(tool_input={"file_path": "/tmp/config.xml"})) is False
+
+
+def test_is_large_data_file_yaml(tmp_path: Path):
+    """Large YAML files should match DATA_EXTENSIONS, not CODE_EXTENSIONS."""
+    path = tmp_path / "data.yaml"
+    path.write_text("\n".join(f"key-{idx}: value-{idx}" for idx in range(101)))
+    assert is_large_data_file(_context(tool_input={"file_path": str(path)})) is True
+
+
+def test_is_unbounded_bash_no_false_positive_category():
+    """Command 'echo category' contains 'cat' but should not match."""
+    assert is_unbounded_bash(_context(tool_input={"command": "echo category"})) is False
+
+
+def test_is_unbounded_bash_no_false_positive_marginal():
+    """Command 'printf 'marginal'' contains 'rg' but should not match."""
+    assert is_unbounded_bash(_context(tool_input={"command": "printf 'marginal'"})) is False
+
+
+def test_is_unbounded_bash_no_false_positive_heading():
+    """Command 'echo heading' contains 'head' but should not match."""
+    assert is_unbounded_bash(_context(tool_input={"command": "echo heading"})) is False
