@@ -3,7 +3,7 @@
 ## Rules to follow
 
 - Check `todo.md` before starting each step — it is the **source of truth** for progress
-- **NO CODE until explicitly told.** We are in the exploration/definition phase. Code is only written when the user says so.
+- **Phase 1 (Observability) is active — coding follows TDD skill.** Phase 0 complete.
 - All plans must be written to files in `docs/plans/` and each plan **must link back** to its corresponding step in `todo.md` (e.g., `See: todo.md step 1.2`)
 - Every step in `todo.md` that produces a plan must link forward to that plan file (e.g., `Plan: docs/plans/001-hook-routing.md`)
 - When completing a todo step, mark it done in `todo.md` immediately
@@ -20,7 +20,7 @@ The project defines a complete Claude Code setup that:
 
 The core idea: hooks intercept Claude's tool calls, categorize them against a JSON-based multi-level mapping, make a routing decision, and log the outcome. Observability is a byproduct of the decision system itself — if a call flows through the hooks, it's automatically observed and measured.
 
-**Previous iteration** had a matcher→resolution pattern (Python functions) that needs rethinking. Phase 0 will redesign this from scratch.
+**Phase 0 redesigned this from scratch.** New architecture: per-tool pipeline with configurable matcher+step chains. Config is routing metadata only; logic lives in Python methods.
 
 ## Tech Stack
 
@@ -42,11 +42,15 @@ The core idea: hooks intercept Claude's tool calls, categorize them against a JS
 ## Don't Change
 
 - Architectural decisions (unless explicitly requested)
-- `config/mappings.json` schema without updating categorisation script
+- `config/mappings.json` v2.0 schema without updating `scripts/engine.py` to match
 
 ## Reference Docs
 
-- `config/mappings.json` — tool→category→plugin mappings
+- `config/mappings.json` — v2.0 schema: tool → matchers[] → steps[] (routing metadata only)
+- `scripts/engine.py` — pipeline walker (Phase 1 implements logic)
+- `scripts/matchers/base.py` — matcher interface: `(context: dict) -> bool`
+- `scripts/steps/base.py` — step interface: `(context: dict) -> dict`, 4 types: check / transform / decide / resolve
+- `docs/plans/009-phase0-synthesis.md` — complete Phase 0 findings and all decisions
 - `docs/` — architecture notes and findings
 
 ## Tool Source Repos (local checkouts — use these as source of truth)
@@ -81,12 +85,42 @@ Three decision types used across all hooks in this project:
 - Update status to in_progress before starting each task
 - Mark completed only after verification
 
-## What We Know (key facts for routing design)
+## What We Know (Phase 0 findings)
 
-**Decision factors established by extraction:**
+**Decision priority order** (highest wins):
+1. **Intent** — `previous_tool = Edit/Write` → always PASS (modification mode needs raw content)
+2. **Data type** — file extension → routes to jCodeMunch / jDocMunch / neither
+3. **Volume** — output/file size → routes to context-mode if large
+4. **Index availability** — index stale → SOFT_DENY to force refresh
+5. **is_retry** — same tool + same input as prior call → always PASS (loop-breaker)
 
-- File extension (code vs doc vs data)
-- File size in lines (threshold unknown — needs quantification)
-- Bash command pattern (bounded vs unbounded output)
-- Intent (read-for-analysis vs read-before-edit vs execute)
-- Session state (index fresh?)
+**Intent is transcript-based** (not /tmp sentinels):
+- `previous_tool`: tail the session transcript (~1ms) to find the last tool called
+- `is_retry`: same tool + same `tool_input` as previous call → loop-break, always PASS
+
+**Tools are orthogonal axes** (D0.11):
+- jCodeMunch / jDocMunch = data type (what KIND of content)
+- context-mode = volume (how MUCH output)
+- RTK = command pattern (Bash rewrite only, post-decision transform — never a routing decision)
+
+**jCodeMunch and jDocMunch are MCP-only** — no shell CLI for indexing/search. Hooks cannot call them directly. Routing pattern: `exit 1` + message (`"Use mcp__jcodemunch__... instead"`).
+
+**RTK is shell-callable** (`rtk <cmd>`) — only tool using `updatedInput` transparent rewrite. Always runs after a Bash PASS decision, never blocks.
+
+**context-mode is a plugin** — its own hooks run independently via `.claude-plugin/`. Do not duplicate its logic in our pipeline.
+
+**Extension tiering for jCodeMunch** (route Tier 1 only in Phase 1):
+- Tier 1: 45 extensions, full tree-sitter extraction → always route to jCodeMunch
+- Tier 2: ~5 extensions, text-only → Phase 1: PASS, log hit for 1.4 validation
+- Tier 3: ~8 extensions, regex-based → Phase 1: PASS, log hit for 1.4 validation
+
+**jDocMunch** supports 20 extensions across 10 parsers. `.json`/`.yaml` only if OpenAPI structure.
+
+**Thresholds:**
+- Bash output: >20 lines → context-mode `ctx_execute`
+- Data files: >100 lines → context-mode `ctx_execute_file`
+
+**Hook execution order (PreToolUse):**
+`jmunch-session-gate` → `continuous-learning observe.sh` → routing hooks (tool-specific)
+
+**Logging:** `lib/log.sh` → `~/.claude/hooks/hook-events.jsonl`. Add routing fields to `detail` dict — do NOT create a separate log file (D1.2).
