@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from scripts.matchers.base import DATA_EXTENSIONS, DOC_EXTENSIONS
+
 
 def _clone(context: dict, **updates: object) -> dict:
     result = dict(context)
@@ -20,12 +22,9 @@ def _append_error(context: dict, message: str) -> dict:
 def _redirect_for_read(context: dict) -> str:
     file_path = context.get("tool_input", {}).get("file_path", "")
     ext = (context.get("file_ext") or Path(file_path).suffix.lower()).lower()
-    if ext in {".md", ".mdx", ".rst", ".txt", ".adoc", ".org"}:
+    if ext in DOC_EXTENSIONS:
         return "mcp__jdocmunch__get_file_content"
-    if ext in {
-        ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
-        ".csv", ".tsv", ".xml", ".log", ".jsonl", ".env",
-    }:
+    if ext in DATA_EXTENSIONS:
         return "ctx_execute_file"
     return "mcp__jcodemunch__get_file_content"
 
