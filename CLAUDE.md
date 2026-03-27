@@ -10,7 +10,17 @@
 
 ## Project Purpose
 
-_To be defined — this is our current step. See `todo.md` step 1._
+A token-reduction system for Claude Code, built on observability and intelligent hook routing.
+
+The project defines a complete Claude Code setup that:
+1. **Categorizes** every Claude Code action (tool call) through a extensible decision framework
+2. **Routes** actions via hooks to token-efficient tools (jDocMunch, jCodeMunch, RTK, context-mode, and future additions)
+3. **Observes** every decision — what was routed, where, how much was saved, what was missed
+4. **Deploys** as a portable system usable across multiple projects
+
+The core idea: hooks intercept Claude's tool calls, categorize them against a JSON-based multi-level mapping, make a routing decision, and log the outcome. Observability is a byproduct of the decision system itself — if a call flows through the hooks, it's automatically observed and measured.
+
+**Previous iteration** had a matcher→resolution pattern (Python functions) that needs rethinking. Phase 0 will redesign this from scratch.
 
 ## Tech Stack
 

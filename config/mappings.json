@@ -1,63 +1,112 @@
 {
-  "_version": "1.0",
-  "_fallback": { "category": "unknown", "plugin": "unknown", "decision": "pass" },
+  "_version": "2.0",
+  "_description": "Hook routing config. Schema: tool → matchers[] → steps[]. Decision logic lives in Python methods; this file is routing metadata only.",
+  "_schema_doc": "See: todo.md step 0.12, docs/plans/009-phase0-synthesis.md",
+  "_fallback": { "decision": "pass" },
 
-  "tools": {
-    "Read":    { "category": "file_ops",  "plugin": "core" },
-    "Edit":    { "category": "file_ops",  "plugin": "core" },
-    "Write":   { "category": "file_ops",  "plugin": "core" },
-    "Glob":    { "category": "file_ops",  "plugin": "core" },
-    "Grep":    { "category": "file_ops",  "plugin": "core" },
-    "Bash":    { "category": "bash_exec", "plugin": "core" },
-    "WebSearch": { "category": "web_search", "plugin": "core" },
-    "WebFetch":  { "category": "web_fetch",  "plugin": "core" },
-
-    "Agent":           { "category": "agent_orchestration", "plugin": "core" },
-    "AskUserQuestion": { "category": "interaction",         "plugin": "core" },
-    "Skill":           { "category": "interaction",         "plugin": "core" },
-
-    "TaskCreate": { "category": "task_management", "plugin": "core" },
-    "TaskGet":    { "category": "task_management", "plugin": "core" },
-    "TaskList":   { "category": "task_management", "plugin": "core" },
-    "TaskUpdate": { "category": "task_management", "plugin": "core" },
-    "TaskOutput": { "category": "task_management", "plugin": "core" },
-    "TaskStop":   { "category": "task_management", "plugin": "core" },
-
-    "CronCreate": { "category": "scheduling", "plugin": "core" },
-    "CronDelete": { "category": "scheduling", "plugin": "core" },
-    "CronList":   { "category": "scheduling", "plugin": "core" },
-
-    "NotebookEdit": { "category": "file_ops",   "plugin": "core" },
-    "LSP":          { "category": "code_search", "plugin": "core" },
-
-    "EnterPlanMode": { "category": "session_control", "plugin": "core" },
-    "ExitPlanMode":  { "category": "session_control", "plugin": "core" },
-    "EnterWorktree": { "category": "session_control", "plugin": "core" },
-    "ExitWorktree":  { "category": "session_control", "plugin": "core" }
+  "Read": {
+    "matchers": [
+      {
+        "id": "read_code_file",
+        "description": "Source code files — soft deny, redirect to jCodeMunch",
+        "method": "matchers.is_code_file",
+        "category": "code_ops",
+        "observe": { "enabled": true, "level": "info" },
+        "steps": [
+          { "type": "check",     "method": "steps.check_code_index_fresh",  "description": "Verify jCodeMunch index is available", "on_failure": "abort" },
+          { "type": "transform", "method": "steps.enrich_file_metadata",    "description": "Add file size and extension to context" },
+          { "type": "decide",    "method": "steps.soft_deny_redirect",      "description": "Suggest jCodeMunch instead of raw Read" },
+          { "type": "resolve",   "method": "steps.format_deny_message",     "description": "Format the hook deny response" }
+        ]
+      },
+      {
+        "id": "read_doc_file",
+        "description": "Documentation files — soft deny, redirect to jDocMunch",
+        "method": "matchers.is_doc_file",
+        "category": "doc_read",
+        "observe": { "enabled": true, "level": "info" },
+        "steps": [
+          { "type": "check",   "method": "steps.check_doc_index_fresh", "description": "Verify jDocMunch index is available", "on_failure": "abort" },
+          { "type": "decide",  "method": "steps.soft_deny_redirect",    "description": "Suggest jDocMunch instead of raw Read" },
+          { "type": "resolve", "method": "steps.format_deny_message",   "description": "Format deny message" }
+        ]
+      },
+      {
+        "id": "read_large_data_file",
+        "description": "Large data/config files (>100 lines) — soft deny, redirect to ctx_execute_file",
+        "method": "matchers.is_large_data_file",
+        "category": "large_data",
+        "observe": { "enabled": true, "level": "debug" },
+        "steps": [
+          { "type": "transform", "method": "steps.enrich_file_metadata",    "description": "Add file size to context" },
+          { "type": "decide",    "method": "steps.soft_deny_redirect",      "description": "Suggest context-mode ctx_execute_file" },
+          { "type": "resolve",   "method": "steps.format_redirect_message", "description": "Format redirect suggestion" }
+        ]
+      }
+    ]
   },
 
-  "mcp_prefixes": {
-    "mcp__jcodemunch__": { "category": "code_search", "plugin": "jcodemunch" },
-    "mcp__jdocmunch__":  { "category": "doc_read",    "plugin": "jdocmunch" },
-    "mcp__exa__":        { "category": "web_search",  "plugin": "exa" },
-    "mcp__context7__":   { "category": "doc_read",    "plugin": "context7" }
+  "Bash": {
+    "matchers": [
+      {
+        "id": "bash_unbounded_output",
+        "description": "Commands likely to produce >20 lines of output — redirect to context-mode sandbox",
+        "method": "matchers.is_unbounded_bash",
+        "category": "bash_exec",
+        "observe": { "enabled": true, "level": "info" },
+        "steps": [
+          { "type": "decide",  "method": "steps.redirect_to_context_mode", "description": "Redirect to context-mode sandbox" },
+          { "type": "resolve", "method": "steps.format_redirect_message",  "description": "Format redirect suggestion" }
+        ]
+      }
+    ]
   },
 
-  "routing": [
-    {
-      "matcher": { "tool": "Read", "input_key": "file_path", "pattern": ".*\\.(py|js|ts|go|java|kt|rs|cpp|c|h)$" },
-      "decision": "soft_deny",
-      "handler": "scripts.routing.handlers.route_read_code"
-    },
-    {
-      "matcher": { "tool": "Read", "input_key": "file_path", "pattern": ".*\\.(md|rst|txt)$" },
-      "decision": "soft_deny",
-      "handler": "scripts.routing.handlers.route_read_doc"
-    },
-    {
-      "matcher": { "tool": "WebSearch" },
-      "decision": "deny",
-      "handler": "scripts.routing.handlers.redirect_to_exa"
-    }
+  "WebSearch": {
+    "matchers": [
+      {
+        "id": "websearch_hard_deny",
+        "description": "All WebSearch calls — hard deny, redirect to Exa MCP",
+        "method": "matchers.always",
+        "category": "web_search",
+        "observe": { "enabled": true, "level": "info" },
+        "steps": [
+          { "type": "decide",  "method": "steps.hard_deny",           "description": "Block WebSearch entirely" },
+          { "type": "resolve", "method": "steps.format_exa_redirect", "description": "Tell Claude to use mcp__exa__ instead" }
+        ]
+      }
+    ]
+  },
+
+  "WebFetch": {
+    "matchers": [
+      {
+        "id": "webfetch_hard_deny",
+        "description": "All WebFetch calls — hard deny, redirect to ctx_fetch_and_index",
+        "method": "matchers.always",
+        "category": "web_fetch",
+        "observe": { "enabled": true, "level": "info" },
+        "steps": [
+          { "type": "decide",  "method": "steps.hard_deny",                        "description": "Block WebFetch entirely" },
+          { "type": "resolve", "method": "steps.format_context_mode_web_redirect", "description": "Tell Claude to use ctx_fetch_and_index instead" }
+        ]
+      }
+    ]
+  },
+
+  "_pass_through": [
+    "Edit", "Write", "Glob", "Grep", "NotebookEdit", "LSP", "ToolSearch",
+    "Agent", "AskUserQuestion", "Skill",
+    "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TaskOutput", "TaskStop",
+    "CronCreate", "CronDelete", "CronList",
+    "EnterPlanMode", "ExitPlanMode", "EnterWorktree", "ExitWorktree"
+  ],
+
+  "_mcp_pass_through_prefixes": [
+    "mcp__jcodemunch__",
+    "mcp__jdocmunch__",
+    "mcp__exa__",
+    "mcp__context7__",
+    "mcp__plugin_context-mode_context-mode__"
   ]
 }
