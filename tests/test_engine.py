@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts import engine
+import scripts.engine as engine
 
 
 def _hook_payload(**overrides) -> dict:

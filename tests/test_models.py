@@ -2,10 +2,8 @@
 import time
 
 import pytest
-
 from scripts.models import (
     HookInput,
-    HookResponse,
     build_hook_response,
     build_initial_context,
     build_observation_entry,

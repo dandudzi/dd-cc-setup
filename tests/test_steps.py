@@ -119,7 +119,7 @@ def test_check_doc_does_not_set_check_failed():
     assert "_check_failed" not in result
 
 
-def test_enrich_file_not_found_leaves_size_none(tmp_path: Path):
+def test_enrich_file_not_found_leaves_size_none():
     result = enrich_file_metadata(_context(tool_input={"file_path": "/nonexistent/path/app.py"}))
     assert result["file_ext"] == ".py"
     assert result["file_size"] is None

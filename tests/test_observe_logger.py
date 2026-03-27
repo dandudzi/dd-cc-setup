@@ -1,11 +1,8 @@
 """Tests for scripts/observe/logger.py — JSONL log writer."""
 import json
 import os
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
-
-import pytest
 
 from scripts.observe.logger import get_log_path, write_error_log, write_log
 

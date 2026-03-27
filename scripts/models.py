@@ -26,7 +26,7 @@ class HookInput:
     raw: dict = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: dict) -> "HookInput":
+    def from_dict(cls, data: dict) -> HookInput:
         known = {
             "session_id", "tool_use_id", "tool_name", "tool_input",
             "hook_event_name", "cwd", "transcript_path", "permission_mode",

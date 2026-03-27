@@ -191,15 +191,15 @@
 | # | Decision | Outcome | Decided | Linked Step |
 |---|----------|---------|---------|-------------|
 | D1.1 | OD.1 — Hook ordering: continuous-learning observe.sh fires before routing hooks | Accept noise in Phase 1. Phase 2 task 2.11: reorder so routing fires first in new system. | 2026-03-27 | 2.11 |
-| D1.2 | OD.2 — Unified log vs separate routing-decisions.jsonl | Extend `hook-events.jsonl`. Add routing fields to `detail` dict. lib/log.sh is the infra. | 2026-03-27 | 1.1 |
+| D1.2 | OD.2 — Unified log vs separate routing-decisions.jsonl | **Revised (2026-03-27):** New file `~/.claude/logs/actions.jsonl` (configurable via `CC_ACTION_LOG`). Python engine writes JSONL directly — no lib/log.sh dependency. See spec `docs/superpowers/specs/2026-03-27-observability-pipeline-design.md`. | 2026-03-27 | 1.1 |
 | D1.3 | OD.3 — Tier 2/3 jCodeMunch extensions worth routing? | Tier 1 only in Phase 1. Log Tier 2/3 hits with `tier: 2/3` tag. Promote in Phase 2 if 1.4 validates. | 2026-03-27 | 1.2, 2.2 |
 | D1.4 | OD.4 — `tool_use_id` available in hook stdin? | Empirically test (task 1.5). If present: use as pre→post correlation key. If absent: `session_id + tool_name + sha256(tool_input)`. | 2026-03-27 | 1.5 |
 
 ### 1.1 — Build the observation hook script(s)
-- **Status:** 🔴 Not started
+- **Status:** ✅ Done (2026-03-27)
 - **Blocked by:** 0.12, 0.13
 - **Goal:** Hook scripts that intercept tool calls and log them as JSON
-- **Plan:** _TBD_
+- **Plan:** `docs/superpowers/specs/2026-03-27-observability-pipeline-design.md`
 - **Key context from Phase 0:**
   - Import `lib/log.sh` (`~/.claude/hooks/lib/log.sh`) — proven infrastructure, all current observers use it
   - Log to `~/.claude/hooks/hook-events.jsonl` — extend existing schema, don't create new file
@@ -211,10 +211,10 @@
   - **D1.4 resolved (pending empirical test):** See task 1.5. If `tool_use_id` in stdin: use as correlation key. If absent: `session_id + tool_name + sha256(tool_input)`.
 
 ### 1.2 — Implement the categorization engine
-- **Status:** 🔴 Not started
+- **Status:** ✅ Done (2026-03-27)
 - **Blocked by:** 0.12, 0.13
 - **Goal:** Python pipeline walker that reads config/mappings.json and chains steps per matcher
-- **Plan:** _TBD_
+- **Plan:** `docs/superpowers/specs/2026-03-27-observability-pipeline-design.md`
 - **Key context from Phase 0:**
   - All steps share the same Python interface: `step(context: dict) → dict` (D0.5)
   - 4 step types: check, transform, decide, resolve — same interface, different semantics
