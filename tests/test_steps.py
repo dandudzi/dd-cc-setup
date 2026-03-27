@@ -164,3 +164,22 @@ def test_pass_through_returns_context_unchanged():
     result = pass_through(ctx)
     assert result["some_key"] == "some_value"
     assert result["decision"] == "pass"
+
+
+def test_enrich_file_metadata_relative_path(tmp_path: Path):
+    """Relative file_path should resolve against context cwd."""
+    # Create a real file at /tmp/project/app.py
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    app_file = project_dir / "app.py"
+    app_file.write_text("print('test')\n")
+
+    # Context with relative path and cwd
+    ctx = _context(
+        tool_input={"file_path": "app.py"},
+        cwd=str(project_dir)
+    )
+    result = enrich_file_metadata(ctx)
+    # Should resolve the relative path correctly
+    assert result["file_ext"] == ".py"
+    assert result["file_size"] == app_file.stat().st_size

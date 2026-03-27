@@ -52,6 +52,12 @@ def enrich_file_metadata(context: dict) -> dict:
         return context
 
     path = Path(file_path)
+    # Anchor relative paths to context cwd if provided
+    if not path.is_absolute():
+        cwd = context.get("cwd", "")
+        if cwd:
+            path = Path(cwd) / path
+
     updated = {"file_ext": path.suffix.lower()}
     try:
         updated["file_size"] = path.stat().st_size

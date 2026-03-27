@@ -206,3 +206,43 @@ def test_is_unbounded_bash_no_false_positive_marginal():
 def test_is_unbounded_bash_no_false_positive_heading():
     """Command 'echo heading' contains 'head' but should not match."""
     assert is_unbounded_bash(_context(tool_input={"command": "echo heading"})) is False
+
+
+def test_file_path_resolution_relative_with_cwd(tmp_path: Path):
+    """Relative file_path should resolve against context cwd."""
+    # Create a real file at /tmp/project/app.py
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    app_file = project_dir / "app.py"
+    app_file.write_text("print('test')\n")
+
+    # Context with relative path and cwd
+    ctx = _context(
+        tool_input={"file_path": "app.py"},
+        cwd=str(project_dir)
+    )
+    assert is_code_file(ctx) is True
+
+
+def test_file_path_resolution_relative_no_cwd():
+    """Relative path without cwd should still work (process cwd fallback)."""
+    # This test allows graceful degradation: if no cwd, the path resolves
+    # relative to process cwd. We just verify it doesn't crash.
+    ctx = _context(tool_input={"file_path": "app.py"})
+    result = is_code_file(ctx)
+    assert isinstance(result, bool)  # Just verify it returns a bool
+
+
+def test_is_large_data_file_relative_with_cwd(tmp_path: Path):
+    """Large data file with relative path should resolve against cwd."""
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    data_file = project_dir / "data.json"
+    data_file.write_text("\n".join(f"line-{idx}" for idx in range(101)))
+
+    # Context with relative path and cwd
+    ctx = _context(
+        tool_input={"file_path": "data.json"},
+        cwd=str(project_dir)
+    )
+    assert is_large_data_file(ctx) is True

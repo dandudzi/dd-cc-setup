@@ -71,7 +71,13 @@ def _file_path_from_context(context: dict) -> Path | None:
     path = context.get("tool_input", {}).get("file_path")
     if not path:
         return None
-    return Path(path)
+    p = Path(path)
+    # Anchor relative paths to context cwd if provided
+    if not p.is_absolute():
+        cwd = context.get("cwd", "")
+        if cwd:
+            p = Path(cwd) / p
+    return p
 
 
 def _line_count(path: Path) -> int | None:
