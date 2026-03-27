@@ -75,7 +75,13 @@
       "Bash(.venv/bin/pytest tests/ -v)",
       "Bash(git merge:*)",
       "Bash(git -C /Users/daniel/Repos/dd-cc-setup merge feature/action-capture-pipeline)",
-      "mcp__jdocmunch__get_section_context"
+      "mcp__jdocmunch__get_section_context",
+      "Bash(git:*)",
+      "Bash(uv add:*)",
+      "mcp__jcodemunch__resolve_repo",
+      "Bash(find /Users/daniel/Repos/dd-cc-setup/.worktrees/phase1-observability -name *observability-pipeline* -o -name 2026-03-27*)",
+      "Bash(wc:*)",
+      "Bash(ruff check:*)"
     ]
   },
   "enabledPlugins": {

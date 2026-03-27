@@ -191,7 +191,7 @@
 | # | Decision | Outcome | Decided | Linked Step |
 |---|----------|---------|---------|-------------|
 | D1.1 | OD.1 — Hook ordering: continuous-learning observe.sh fires before routing hooks | Accept noise in Phase 1. Phase 2 task 2.11: reorder so routing fires first in new system. | 2026-03-27 | 2.11 |
-| D1.2 | OD.2 — Unified log vs separate routing-decisions.jsonl | Extend `hook-events.jsonl`. Add routing fields to `detail` dict. lib/log.sh is the infra. | 2026-03-27 | 1.1 |
+| D1.2 | OD.2 — Unified log vs separate routing-decisions.jsonl | **Revised (2026-03-27):** New file `~/.claude/logs/actions.jsonl` (configurable via `CC_ACTION_LOG`). Python engine writes JSONL directly — no lib/log.sh dependency. See spec `docs/superpowers/specs/2026-03-27-observability-pipeline-design.md`. | 2026-03-27 | 1.1 |
 | D1.3 | OD.3 — Tier 2/3 jCodeMunch extensions worth routing? | Tier 1 only in Phase 1. Log Tier 2/3 hits with `tier: 2/3` tag. Promote in Phase 2 if 1.4 validates. | 2026-03-27 | 1.2, 2.2 |
 | D1.4 | OD.4 — `tool_use_id` available in hook stdin? | Empirically test (task 1.5). If present: use as pre→post correlation key. If absent: `session_id + tool_name + sha256(tool_input)`. | 2026-03-27 | 1.5 |
 
@@ -237,12 +237,49 @@
   - Per-tool breakdown: how much each redirect type saves on average
 
 ### 1.5 — Empirically test `tool_use_id` availability in hook stdin
-- **Status:** 🔴 Not started
+- **Status:** ✅ Done
 - **Blocked by:** —
 - **Goal:** Confirm whether Claude Code includes `tool_use_id` in the PreToolUse hook stdin JSON. Result feeds D1.4 — determines our pre→post correlation key strategy.
-- **Plan:** _TBD_
+- **Plan:** `hooks/test-stdin-dump.sh` (kept as reference, not registered)
 - **Method:** Write a 3-line test hook that dumps raw stdin to `/tmp/hook-stdin-test.json`, register it on PreToolUse:Read, trigger one Read call, inspect the output.
-- **Expected fields from existing hooks:** `cwd`, `tool_name`, `tool_input`. `tool_use_id` unconfirmed.
+- **Result (D1.4 resolved):** `tool_use_id` IS present. Full payload fields: `session_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `tool_name`, `tool_input`, `tool_use_id`. Use `tool_use_id` as the pre→post correlation key.
+- **Additional discovery (from changelog, not yet empirically tested):**
+  - Claude Code changelog confirms: `agent_id` (for subagents) and `agent_type` (for subagents and `--agent`) are included in hook event stdin JSON.
+  - `CLAUDE_AGENT_NAME` env var is also set for subagent processes (confirmed in use by `track-genuine-savings.sh`).
+  - Task 1.5 tested from **main session only** — `agent_id`/`agent_type` would be absent there. Need subagent-context test (see 1.5b below).
+  - **Routing implication:** `agent_type` is a strong intent signal. Explore/Plan agents can't Edit/Write (excluded from their toolset), so `agent_type in (Explore, Plan)` = guaranteed research intent. This is more reliable than `previous_tool` for agent contexts.
+  - **Agent-type matching tiers for decision-making:**
+    - Read-only agents (Explore, Plan, security-auditor, cloud-architect, architect, observability-expert) → research intent, safe to redirect to jCodeMunch/jDocMunch
+    - Code-writing agents (python-expert, typescript-expert, react-expert, nextjs-expert, docker-expert) → may need raw Read before Edit, treat as modification intent
+    - Review agents (code-reviewer, python-reviewer, java-reviewer) → research intent but may need raw content for line-level review — log and validate in Phase 1
+    - No agent_id (main session) → fall through to `previous_tool` / other factors
+  - This is a new decision axis: **WHO** is calling (orthogonal to data-type and volume axes from D0.11).
+
+### 1.5b — Empirically test `agent_id`/`agent_type` availability in subagent hook stdin
+- **Status:** 🔴 Not started
+- **Blocked by:** —
+- **Goal:** Confirm `agent_id` and `agent_type` fields appear in hook stdin when hooks fire inside a subagent context. Also check `CLAUDE_AGENT_NAME` env var.
+- **Method:** Register a test hook on PreToolUse:Read that dumps stdin + env to `/tmp/hook-stdin-agent-test.json`. Spawn an Explore agent that triggers a Read. Inspect the dump.
+- **What to capture:**
+  - Presence/absence of `agent_id` and `agent_type` in stdin JSON
+  - Value of `CLAUDE_AGENT_NAME` env var
+  - Whether `session_id` is the same as the parent session or different
+  - Whether `transcript_path` points to a separate transcript or the parent's
+  - Whether `permission_mode` reflects the agent's mode or inherits from parent
+- **Feeds:** HookInput dataclass update (add `agent_id`, `agent_type` optional fields), decision tree validation for agent-aware routing
+
+### 1.6 — Implement transcript-based decision factors (previous_tool, is_retry)
+- **Status:** 🔴 Not started
+- **Blocked by:** 1.1, 1.2
+- **Goal:** Tail the session transcript to extract `previous_tool` and `is_retry` values that drive the Intent decision factor (highest priority in the 5-factor order).
+- **Plan:** _TBD_
+- **Notes:**
+  - Both are stubbed as `None` in Phase 1 (observation-only). Implement in Phase 2 before enforcement.
+  - `previous_tool`: read last tool call from transcript tail (~1ms). `Edit`/`Write` → PASS (modification mode).
+  - `is_retry`: same `tool_name` + same `tool_input` as the previous call → PASS (loop-breaker, replaces /tmp sentinels).
+  - Transcript path available in `HookInput.transcript_path` (confirmed in task 1.5).
+  - See spec: `docs/superpowers/specs/2026-03-27-observability-pipeline-design.md`
+  - Deferred from Phase 1 scope per design spec "Not In Scope" table.
 
 ### 1.4 — Mine historical transcript logs for baseline statistics
 - **Status:** 🔴 Not started
@@ -450,6 +487,52 @@
   - Need real token cost comparisons across: file sizes (50, 200, 500, 1000+ lines), languages (Tier 1 vs 2 vs 3), use cases (symbol lookup vs full-file understanding)
   - May inform a new decision rule: "if file > X lines AND intent = broad understanding → context-mode over jCodeMunch"
 
+### 2.12 — Debug logging levels (configurable verbosity)
+- **Status:** 🔴 Not started
+- **Blocked by:** 1.1, 1.2
+- **Goal:** Expose `observe.level` (info/debug) via an environment variable so verbosity can be changed at runtime without editing mappings.json.
+- **Plan:** _TBD_
+- **Notes:**
+  - `observe.level` per-matcher in mappings.json is the primary mechanism (Phase 1).
+  - Add `CC_OBSERVE_LEVEL` env var override: `debug` forces `steps_trace` in all entries; `info` suppresses it globally.
+  - `debug` level: full `steps_trace` in JSONL. `info` level: `steps_trace: []`.
+  - Deferred from Phase 1 scope per design spec "Not In Scope" table.
+
+### 2.13 — Logs retention / rotation / cleanup
+- **Status:** 🔴 Not started
+- **Blocked by:** 1.1
+- **Goal:** Define max size, rotation policy, and cleanup strategy for `~/.claude/logs/actions.jsonl`.
+- **Plan:** _TBD_
+- **Notes:**
+  - `actions.jsonl` will grow unbounded without rotation — define policy before production use.
+  - Options: max file size (e.g. 50MB) → rotate to `actions.jsonl.1`, max N rotations; or time-based (daily/weekly).
+  - Should rotation happen in the engine on each write (check size before write) or via a separate cron/cleanup script?
+  - Also: define what "cleanup" means — delete old rotations or archive them?
+  - Deferred from Phase 1 scope per design spec "Not In Scope" table.
+
+### 2.14 — Extend engine to PostToolUse / SessionStart / other hook events
+- **Status:** 🔴 Not started
+- **Blocked by:** 2.1
+- **Goal:** Register `engine.py` on additional hook events beyond PreToolUse, starting with PostToolUse (for re-indexing) and SessionStart (for init).
+- **Plan:** _TBD_
+- **Notes:**
+  - Phase 1 targets PreToolUse only. Engine architecture supports other events — needs registration + matcher config.
+  - PostToolUse: trigger re-indexing on Edit/Write success (links to tasks 2.5, 2.6).
+  - SessionStart: validate tool availability, warm indexes, detect RTK/context-mode conflicts (links to 2.4, 2.7).
+  - Other candidates: PreCompact (flush/snapshot logs), PostCompact (re-init indexes).
+  - Deferred from Phase 1 scope per design spec "Not In Scope" table.
+
+### 2.15 — Indexing triggers design
+- **Status:** 🔴 Not started
+- **Blocked by:** 2.4, 2.5, 2.6, 2.14
+- **Goal:** Design a unified policy for when jCodeMunch/jDocMunch indexes are triggered to re-index: PostToolUse, SessionStart, file watcher, or on-demand.
+- **Plan:** _TBD_
+- **Notes:**
+  - Existing triggers: PostToolUse after Edit/Write (tasks 2.5, 2.6), watch mode (task 2.4).
+  - Questions: Should SessionStart always re-index? What if index is fresh (indexed < 5min ago)?
+  - File watcher (jCodeMunch watch mode) vs PostToolUse hook: are they complementary or redundant?
+  - Deferred from Phase 1 scope per design spec "Not In Scope" table.
+
 ---
 
 ## Phase 3: Deployment & Portability _(future — notes only)_
@@ -460,6 +543,7 @@
 - **Open questions:** Portable configs? Install script? Package? TBD when we get here.
 - **Notes:**
   - _(add notes here as Phase 0–2 work surfaces deployment considerations)_
+  - **v1.0 Python code removal:** On global deploy, remove `scripts/capture/`, `scripts/categorise/`, `scripts/routing/` — these are dead code kept only as reference during Phase 1/2 development. Remove only after Phase 2 pipeline is validated in production.
 
 ---
 
@@ -474,4 +558,4 @@
 
 ---
 
-_Last updated: 2026-03-27_
+_Last updated: 2026-03-27 — added tasks 1.6, 2.12–2.15; revised D1.2; Phase 3 v1.0 cleanup note_
