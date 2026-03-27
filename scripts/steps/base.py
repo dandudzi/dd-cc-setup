@@ -22,7 +22,10 @@ def _redirect_for_read(context: dict) -> str:
     ext = (context.get("file_ext") or Path(file_path).suffix.lower()).lower()
     if ext in {".md", ".mdx", ".rst", ".txt", ".adoc", ".org"}:
         return "mcp__jdocmunch__get_file_content"
-    if ext in {".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".csv", ".tsv", ".xml", ".log", ".jsonl", ".env"}:
+    if ext in {
+        ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
+        ".csv", ".tsv", ".xml", ".log", ".jsonl", ".env",
+    }:
         return "ctx_execute_file"
     return "mcp__jcodemunch__get_file_content"
 

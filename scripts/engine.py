@@ -16,7 +16,6 @@ from scripts.models import (
 )
 from scripts.observe.logger import write_error_log, write_log
 
-
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "mappings.json"
 
 
@@ -90,9 +89,12 @@ def _run_steps(context: dict, matcher_config: dict) -> tuple[dict, bool]:
         current = step(current)
         current = _record_step_trace(current, step_config, observe_level)
 
-        if step_config.get("type") == "check" and current.get("index_fresh") is False:
-            if step_config.get("on_failure", "abort") == "abort":
-                return current, True
+        if (
+            step_config.get("type") == "check"
+            and current.get("index_fresh") is False
+            and step_config.get("on_failure", "abort") == "abort"
+        ):
+            return current, True
 
     if observe_level != "debug":
         current["steps_trace"] = []
