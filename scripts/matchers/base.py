@@ -60,20 +60,11 @@ DATA_EXTENSIONS = {
     ".yaml",
     ".yml",
 }
-UNBOUNDED_BASH_TOKENS = {
-    "cat",
-    "find",
-    "git diff",
-    "git log",
-    "grep",
-    "head",
-    "jq",
-    "ls -R",
-    "npm test",
-    "pytest",
-    "rg",
-    "tail",
-}
+# Single-word tokens use word-boundary regex; multi-word tokens use substring matching.
+_UNBOUNDED_SINGLE_WORD = {"cat", "find", "grep", "head", "jq", "pytest", "rg", "tail"}
+_UNBOUNDED_MULTI_WORD = {"git diff", "git log", "ls -R", "npm test"}
+# Compiled once at import time; avoids re-compiling inside the hot path.
+_UNBOUNDED_PATTERNS = [re.compile(rf"\b{re.escape(t)}\b") for t in _UNBOUNDED_SINGLE_WORD]
 
 
 def _file_path_from_context(context: dict) -> Path | None:
@@ -126,20 +117,9 @@ def is_unbounded_bash(context: dict) -> bool:
         return False
 
     normalized = " ".join(command.split())
-
-    # Single-word tokens: use word-boundary regex to avoid false positives
-    single_word_tokens = {"cat", "find", "grep", "head", "jq", "pytest", "rg", "tail"}
-    for token in single_word_tokens:
-        pattern = re.compile(rf"\b{re.escape(token)}\b")
-        if pattern.search(normalized):
-            return True
-
-    # Multi-word tokens: use substring matching (spaces are natural separators)
-    multi_word_tokens = {"git diff", "git log", "ls -R", "npm test"}
-    if any(token in normalized for token in multi_word_tokens):
-        return True
-
-    return False
+    return any(p.search(normalized) for p in _UNBOUNDED_PATTERNS) or any(
+        t in normalized for t in _UNBOUNDED_MULTI_WORD
+    )
 
 
 def always(_: dict) -> bool:
