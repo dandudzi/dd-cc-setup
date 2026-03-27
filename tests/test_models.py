@@ -82,7 +82,7 @@ class TestHookInput:
     def test_hookinput_is_immutable(self):
         hi = HookInput.from_dict(_hook_input())
         with pytest.raises((AttributeError, TypeError)):
-            hi.tool_name = "Write"
+            setattr(hi, "tool_name", "Write")
 
 
 class TestBuildInitialContext:
@@ -220,4 +220,4 @@ class TestBuildHookResponse:
     def test_hookresponse_is_immutable(self):
         resp = build_hook_response(_context())
         with pytest.raises((AttributeError, TypeError)):
-            resp.exit_code = 1
+            setattr(resp, "exit_code", 1)
