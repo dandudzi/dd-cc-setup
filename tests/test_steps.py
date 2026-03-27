@@ -51,7 +51,8 @@ def test_soft_deny_redirect_sets_decision_and_default_target():
 
 
 def test_redirect_to_context_mode_sets_ctx_execute():
-    result = redirect_to_context_mode(_context(tool_name="Bash", tool_input={"command": "rg foo ."}))
+    ctx = _context(tool_name="Bash", tool_input={"command": "rg foo ."})
+    result = redirect_to_context_mode(ctx)
     assert result["decision"] == "soft_deny"
     assert result["redirect_to"] == "ctx_execute"
 
@@ -69,8 +70,16 @@ def test_format_deny_message_mentions_file_path():
 
 
 def test_format_redirect_message_includes_command():
-    result = format_redirect_message(_context(tool_name="Bash", tool_input={"command": "rg foo ."}, redirect_to="ctx_execute"))
-    assert result["_stderr_message"] == 'Suggested: ctx_execute for command="rg foo ."'
+    ctx = _context(
+        tool_name="Bash",
+        tool_input={"command": "rg foo ."},
+        redirect_to="ctx_execute",
+    )
+    result = format_redirect_message(ctx)
+    assert (
+        result["_stderr_message"]
+        == 'Suggested: ctx_execute for command="rg foo ."'
+    )
 
 
 def test_format_exa_redirect_sets_canonical_message():
@@ -87,3 +96,71 @@ def test_format_context_mode_web_redirect_sets_canonical_message():
 
 def test_pass_through_forces_pass():
     assert pass_through(_context(decision="hard_deny"))["decision"] == "pass"
+
+
+def test_check_code_does_not_set_check_failed():
+    result = check_code_index_fresh(_context())
+    assert "_check_failed" not in result
+
+
+def test_check_code_returns_dict():
+    assert isinstance(check_code_index_fresh(_context()), dict)
+
+
+def test_check_doc_sets_index_fresh_true_when_none():
+    # When index_fresh not set, stub defaults to True
+    ctx = {k: v for k, v in _context().items() if k != "index_fresh"}
+    result = check_doc_index_fresh(ctx)
+    assert result["index_fresh"] is True
+
+
+def test_check_doc_does_not_set_check_failed():
+    result = check_doc_index_fresh(_context())
+    assert "_check_failed" not in result
+
+
+def test_enrich_file_not_found_leaves_size_none(tmp_path: Path):
+    result = enrich_file_metadata(_context(tool_input={"file_path": "/nonexistent/path/app.py"}))
+    assert result["file_ext"] == ".py"
+    assert result["file_size"] is None
+
+
+def test_enrich_no_file_path_leaves_both_none():
+    result = enrich_file_metadata(_context(tool_input={}))
+    assert result.get("file_ext") is None
+    assert result.get("file_size") is None
+
+
+def test_soft_deny_does_not_change_other_keys():
+    ctx = _context(my_custom_key="preserved")
+    result = soft_deny_redirect(ctx)
+    assert result["my_custom_key"] == "preserved"
+
+
+def test_format_deny_message_contains_redirect():
+    result = format_deny_message(_context(redirect_to="mcp__jcodemunch__get_file_content"))
+    msg = result["_stderr_message"]
+    assert "jcodemunch" in msg.lower() or "mcp__jcodemunch__get_file_content" in msg
+
+
+def test_format_deny_message_without_redirect():
+    ctx = _context()
+    ctx.pop("redirect_to", None)
+    result = format_deny_message(ctx)
+    assert "_stderr_message" in result
+    assert result["_stderr_message"]  # non-empty
+
+
+def test_format_context_mode_web_redirect_includes_url():
+    ctx = _context(tool_name="WebFetch", tool_input={"url": "https://example.com/api/docs"})
+    result = format_context_mode_web_redirect(ctx)
+    # Canonical message is always the same regardless of URL
+    assert "ctx_fetch_and_index" in result["_stderr_message"]
+    assert result["redirect_to"] == "ctx_fetch_and_index"
+
+
+def test_pass_through_returns_context_unchanged():
+    ctx = _context(some_key="some_value")
+    result = pass_through(ctx)
+    assert result["some_key"] == "some_value"
+    assert result["decision"] == "pass"

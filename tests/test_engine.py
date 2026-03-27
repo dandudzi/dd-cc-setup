@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from scripts import engine
 
 
@@ -144,3 +146,164 @@ def test_main_skips_write_log_when_observe_disabled(tmp_path: Path):
 
     assert exit_code == 0
     write_log.assert_not_called()
+
+
+def test_load_mappings_real_config():
+    """Load the actual config/mappings.json and verify version."""
+    from pathlib import Path
+    config_path = Path(__file__).parent.parent / "config" / "mappings.json"
+    result = engine.load_mappings(config_path)
+    assert result["_version"] == "2.0"
+
+
+def test_load_mappings_raises_on_missing_file(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        engine.load_mappings(tmp_path / "nonexistent.json")
+
+
+def test_resolve_callable_resolves_matcher():
+    fn = engine.resolve_callable("matchers.is_code_file")
+    assert callable(fn)
+    # verify it actually works
+    assert fn({"tool_input": {"file_path": "/tmp/app.py"}}) is True
+
+
+def test_resolve_callable_resolves_step():
+    fn = engine.resolve_callable("steps.soft_deny_redirect")
+    assert callable(fn)
+
+
+def test_resolve_callable_raises_on_unknown_function():
+    with pytest.raises(AttributeError):
+        engine.resolve_callable("matchers.nonexistent_function_xyz")
+
+
+def test_routing_tools_not_pass_through():
+    """Read, Bash, Glob, Grep are NOT pass-through — they fall through to matchers."""
+    # With an empty matchers mapping, they fall to fallback (decision=pass)
+    # but are NOT marked _pass_through
+    minimal_mappings = {
+        "_fallback": {"decision": "pass"},
+        "_pass_through": [],
+        "_mcp_pass_through_prefixes": [],
+    }
+    for tool in ["Read", "Bash", "Glob", "Grep"]:
+        ctx = {"tool_name": tool, "tool_input": {}}
+        result, matcher = engine.run_pipeline(ctx, minimal_mappings)
+        assert (
+            result.get("_pass_through") is not True
+        ), f"{tool} should not be pass-through"
+
+
+def test_run_pipeline_unknown_tool_falls_to_fallback():
+    ctx = {"tool_name": "Agent", "tool_input": {}}
+    result, matcher = engine.run_pipeline(ctx, _mappings())
+    assert result["decision"] == "pass"
+    assert matcher is None
+
+
+def test_run_pipeline_steps_trace_empty_at_info_level(tmp_path):
+    # Create mappings with level=info (not debug)
+    path = tmp_path / "app.py"
+    path.write_text("x = 1\n")
+    mappings = _mappings()
+    mappings["Read"]["matchers"][0]["observe"]["level"] = "info"
+    ctx = {
+        "tool_name": "Read",
+        "tool_input": {"file_path": str(path)},
+        "decision": "pass",
+        "steps_trace": [],
+        "errors": [],
+    }
+    result, _ = engine.run_pipeline(ctx, mappings)
+    assert result["steps_trace"] == []
+
+
+def test_run_pipeline_abort_on_check_failure():
+    """Check step with on_failure=abort + index_fresh=False → fallback to pass."""
+    abort_mappings = {
+        "_fallback": {"decision": "pass"},
+        "_pass_through": [],
+        "_mcp_pass_through_prefixes": [],
+        "Read": {
+            "matchers": [
+                {
+                    "id": "abort_test",
+                    "method": "matchers.always",
+                    "category": "test",
+                    "observe": {"enabled": True, "level": "info"},
+                    "steps": [
+                        {
+                            "type": "check",
+                            "method": "steps.check_code_index_fresh",
+                            "on_failure": "abort",
+                        },
+                    ],
+                }
+            ]
+        },
+    }
+    ctx = {
+        "tool_name": "Read",
+        "tool_input": {},
+        "index_fresh": False,
+        "decision": "pass",
+        "steps_trace": [],
+        "errors": [],
+    }
+    result, _ = engine.run_pipeline(ctx, abort_mappings)
+    assert result["decision"] == "pass"
+
+
+def test_run_pipeline_observe_disabled_sets_flag(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("x = 1\n")
+    mappings = _mappings()
+    mappings["Read"]["matchers"][0]["observe"]["enabled"] = False
+    ctx = {
+        "tool_name": "Read",
+        "tool_input": {"file_path": str(path)},
+        "decision": "pass",
+        "steps_trace": [],
+        "errors": [],
+    }
+    # should_log is called externally with the returned matcher
+    result, matcher = engine.run_pipeline(ctx, mappings)
+    assert engine.should_log(matcher) is False
+
+
+def test_run_pipeline_observe_enabled_true_by_default(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("x = 1\n")
+    mappings = _mappings()
+    # Remove observe key entirely
+    del mappings["Read"]["matchers"][0]["observe"]
+    ctx = {
+        "tool_name": "Read",
+        "tool_input": {"file_path": str(path)},
+        "decision": "pass",
+        "steps_trace": [],
+        "errors": [],
+    }
+    result, matcher = engine.run_pipeline(ctx, mappings)
+    assert engine.should_log(matcher) is True
+
+
+def test_main_crash_guard_logs_error_entry(tmp_path):
+    """Mid-pipeline RuntimeError → event_type='error' written to log."""
+    payload = json.dumps(_hook_payload())
+
+    with patch(
+        "scripts.engine.load_mappings",
+        side_effect=RuntimeError("test crash error"),
+    ), patch("scripts.engine.write_log") as write_log, patch(
+        "scripts.engine.write_error_log"
+    ) as write_error_log:
+        exit_code = engine.main(payload)
+
+    assert exit_code == 0
+    # Either write_log or write_error_log captures the crash
+    assert write_log.called or write_error_log.called
+    if write_log.called:
+        entry = write_log.call_args[0][0]
+        assert "test crash error" in str(entry.get("errors", []))
