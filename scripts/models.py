@@ -26,7 +26,7 @@ class HookInput:
     raw: dict = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: dict) -> HookInput:
+    def from_dict(cls, data: object) -> HookInput:
         if not isinstance(data, dict):
             raise TypeError(f"HookInput.from_dict expects a dict, got {type(data).__name__}")
         known = {
