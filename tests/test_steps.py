@@ -23,6 +23,7 @@ def _context(**overrides):
         "tool_input": {"file_path": "/tmp/app.py"},
         "decision": "pass",
         "errors": [],
+        "warnings": [],
     }
     base.update(overrides)
     return base
@@ -183,3 +184,11 @@ def test_enrich_file_metadata_relative_path(tmp_path: Path):
     # Should resolve the relative path correctly
     assert result["file_ext"] == ".py"
     assert result["file_size"] == app_file.stat().st_size
+
+
+def test_enrich_file_metadata_stat_failure_uses_warning_not_error():
+    """Stat failures should go to warnings, not errors."""
+    missing_path = "/nonexistent/missing/file.py"
+    result = enrich_file_metadata(_context(tool_input={"file_path": missing_path}))
+    assert result.get("warnings") == [f"unable to stat file: {missing_path}"]
+    assert result.get("errors", []) == []

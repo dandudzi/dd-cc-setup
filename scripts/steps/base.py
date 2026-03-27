@@ -19,6 +19,12 @@ def _append_error(context: dict, message: str) -> dict:
     return _clone(context, errors=errors)
 
 
+def _append_warning(context: dict, message: str) -> dict:
+    warnings = list(context.get("warnings", []))
+    warnings.append(message)
+    return _clone(context, warnings=warnings)
+
+
 def _redirect_for_read(context: dict) -> str:
     file_path = context.get("tool_input", {}).get("file_path", "")
     ext = (context.get("file_ext") or Path(file_path).suffix.lower()).lower()
@@ -63,7 +69,7 @@ def enrich_file_metadata(context: dict) -> dict:
         updated["file_size"] = path.stat().st_size
     except OSError:
         updated["file_size"] = context.get("file_size")
-        return _append_error(_clone(context, **updated), f"unable to stat file: {file_path}")
+        return _append_warning(_clone(context, **updated), f"unable to stat file: {file_path}")
 
     return _clone(context, **updated)
 

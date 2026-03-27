@@ -79,6 +79,7 @@ def build_initial_context(hook_input: HookInput) -> dict:
         "redirect_to": None,
         "steps_trace": [],
         "errors": [],
+        "warnings": [],
     }
 
 
@@ -119,6 +120,7 @@ def build_observation_entry(context: dict, start_time: float) -> dict:
             "index_fresh": context.get("index_fresh"),
         },
         "errors": context.get("errors", []),
+        "warnings": context.get("warnings", []),
         "steps_trace": context.get("steps_trace", []),
         "latency_ms": latency_ms,
     }
