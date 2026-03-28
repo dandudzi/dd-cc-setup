@@ -269,23 +269,24 @@
 - **Feeds:** HookInput dataclass update (add `agent_id`, `agent_type` optional fields), decision tree validation for agent-aware routing
 
 ### 1.6 — Implement transcript-based decision factors (previous_tool, is_retry)
-- **Status:** 🔴 Not started
+- **Status:** 🟢 Done
 - **Blocked by:** ~~1.1, 1.2~~ (both done — unblocked)
 - **Goal:** Tail the session transcript to extract `previous_tool` and `is_retry` values that drive the Intent decision factor (highest priority in the 5-factor order).
-- **Plan:** _TBD_
+- **Plan:** `docs/plans/016-transcript-factors.md`
+- **Results:** New module `scripts/transcript.py` — seek-based tail, fail-open. `previous_tool` and `is_retry` now populated in every pipeline run and logged to `decision_factors` in `actions.jsonl`. 26 unit tests + 1 engine integration test. All 271 tests pass.
 - **Notes:**
   - Both are stubbed as `None` in Phase 1 (observation-only). Implement in Phase 2 before enforcement.
   - `previous_tool`: read last tool call from transcript tail (~1ms). `Edit`/`Write` → PASS (modification mode).
   - `is_retry`: same `tool_name` + same `tool_input` as the previous call → PASS (loop-breaker, replaces /tmp sentinels).
   - Transcript path available in `HookInput.transcript_path` (confirmed in task 1.5).
   - See spec: `docs/superpowers/specs/2026-03-27-observability-pipeline-design.md`
-  - Deferred from Phase 1 scope per design spec "Not In Scope" table.
 
 ### 1.4 — Mine historical transcript logs for baseline statistics
-- **Status:** 🔴 Not started
+- **Status:** 🟢 Done
 - **Blocked by:** —
 - **Goal:** Analyze `~/.claude/projects/*/` transcript JSONL files to extract baseline token usage, tool call patterns, Read→Edit sequences, and per-action token costs. This data feeds routing threshold calibration and validates decision factor predictions.
-- **Plan:** _TBD_
+- **Plan:** `docs/plans/014-transcript-mining.md`
+- **Results:** 690 sessions, 7,971 tool calls. Waste fraction: **59.2%** (674/1139 reads redirectable). Bash unbounded: **55.7%**. File-size threshold confirmed at **100 lines / ~5,000 chars** (p87 of raw corpus; corrected from biased 6,048-char figure). Top extensions: .md (1370), .java (430), .sh (199), .py (145). Tier 2/3 hits minimal (7 total). See `reports/transcript-baseline.json` and `docs/findings/014-transcript-mining-findings.md`.
 - **Notes:**
   - Transcripts contain full tool_use blocks with tool_name, tool_input, and usage (token counts)
   - Key analyses: Read→Edit pair frequency, tool call sequences, per-extension token costs, permission_mode distribution, agent_type patterns

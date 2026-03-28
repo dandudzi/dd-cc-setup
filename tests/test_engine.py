@@ -307,3 +307,38 @@ def test_main_crash_guard_logs_error_entry(tmp_path):
     if write_log.called:
         entry = write_log.call_args[0][0]
         assert "test crash error" in str(entry.get("errors", []))
+
+
+def test_main_populates_transcript_factors(tmp_path: Path):
+    """Transcript factors are resolved and appear in the logged observation entry."""
+    import json as _json
+
+    # Write a transcript with a completed Edit call
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        _json.dumps({
+            "type": "assistant",
+            "requestId": "req-prev",
+            "message": {
+                "stop_reason": "tool_use",
+                "content": [
+                    {"type": "tool_use", "id": "tu-0", "name": "Edit",
+                     "input": {"file_path": "/src/app.py"}}
+                ],
+                "usage": {"input_tokens": 100, "output_tokens": 50},
+            },
+        }) + "\n"
+    )
+
+    payload = json.dumps(_hook_payload(transcript_path=str(transcript)))
+
+    with patch("scripts.engine.write_log") as write_log, patch(
+        "scripts.engine.write_error_log"
+    ):
+        engine.main(payload)
+
+    assert write_log.called
+    entry = write_log.call_args[0][0]
+    factors = entry.get("decision_factors", {})
+    assert factors["previous_tool"] == "Edit"
+    assert factors["is_retry"] is False

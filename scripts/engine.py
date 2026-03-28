@@ -15,6 +15,7 @@ from scripts.models import (
     build_observation_entry,
 )
 from scripts.observe.logger import write_error_log, write_log
+from scripts.transcript import enrich_transcript_factors
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "mappings.json"
 
@@ -155,6 +156,7 @@ def main(stdin_text: str | None = None) -> int:
     try:
         hook_input = parse_stdin(stdin_text)
         context = build_initial_context(hook_input)
+        context = enrich_transcript_factors(context)  # task 1.6
         mappings = load_mappings()
         context, matcher_config = run_pipeline(context, mappings)
         should_write_log = should_log(matcher_config)
