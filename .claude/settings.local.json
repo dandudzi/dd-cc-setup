@@ -81,12 +81,13 @@
       "mcp__jcodemunch__resolve_repo",
       "Bash(find /Users/daniel/Repos/dd-cc-setup/.worktrees/phase1-observability -name *observability-pipeline* -o -name 2026-03-27*)",
       "Bash(wc:*)",
-      "Bash(ruff check:*)"
+      "Bash(ruff check:*)",
+      "Bash(.venv/bin/ruff check:*)",
+      "Bash(/Users/daniel/Repos/dd-cc-setup/.venv/bin/ruff check:*)",
+      "Bash(find ~/.claude/projects/ -name *.jsonl -type f -newer ~/.claude/projects/)",
+      "Bash(find /Users/daniel/Repos/dd-cc-setup -name *track* -o -name *saving* -o -name *genuine*)",
+      "Bash(find /Users/daniel/Repos/dd-cc-setup -name settings*.json -not -path *node_modules* -not -path *.worktrees*)"
     ]
-  },
-  "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true,
-    "context7@claude-plugins-official": true
   },
   "hooks": {
     "PreToolUse": [
@@ -100,5 +101,9 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "context7@claude-plugins-official": true
   }
 }

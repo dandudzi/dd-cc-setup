@@ -1,4 +1,5 @@
 ### Python ###
+docs/*
 __pycache__/
 *.py[cod]
 *$py.class
@@ -82,6 +83,9 @@ plans/
 pytest-of-*/
 *.whl
 uv-*.lock
+
+### Reports (generated output) ###
+reports/
 
 ### Docs (generated) ###
 docs/generated/
