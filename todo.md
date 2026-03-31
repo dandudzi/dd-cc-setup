@@ -256,17 +256,20 @@
   - This is a new decision axis: **WHO** is calling (orthogonal to data-type and volume axes from D0.11).
 
 ### 1.5b — Empirically test `agent_id`/`agent_type` availability in subagent hook stdin
-- **Status:** 🔴 Not started
+- **Status:** 🟢 Done
 - **Blocked by:** —
 - **Goal:** Confirm `agent_id` and `agent_type` fields appear in hook stdin when hooks fire inside a subagent context. Also check `CLAUDE_AGENT_NAME` env var.
-- **Method:** Register a test hook on PreToolUse:Read that dumps stdin + env to `/tmp/hook-stdin-agent-test.json`. Spawn an Explore agent that triggers a Read. Inspect the dump.
-- **What to capture:**
-  - Presence/absence of `agent_id` and `agent_type` in stdin JSON
-  - Value of `CLAUDE_AGENT_NAME` env var
-  - Whether `session_id` is the same as the parent session or different
-  - Whether `transcript_path` points to a separate transcript or the parent's
-  - Whether `permission_mode` reflects the agent's mode or inherits from parent
-- **Feeds:** HookInput dataclass update (add `agent_id`, `agent_type` optional fields), decision tree validation for agent-aware routing
+- **Method:** Registered `hooks/test-stdin-dump.sh` on PreToolUse:Read in settings.local.json. Spawned an Explore agent (Read of pyproject.toml). Inspected appended NDJSON dump via Bash.
+- **Results (D1.5b confirmed):**
+  - `agent_id` **IS present** in subagent hook stdin (e.g. `a6b8e96fbd147c168`)
+  - `agent_type` **IS present** in subagent hook stdin (e.g. `Explore`)
+  - `session_id` **SAME** as parent session — subagents share the parent session ID
+  - `transcript_path` **SAME** as parent — subagents write to the same transcript file
+  - `permission_mode` **SAME** as parent — inherited (`acceptEdits`)
+  - `CLAUDE_AGENT_NAME` env var **NOT present** — not set by Claude Code for subagents
+  - **Plan mode:** `permission_mode` is `"plan"` when hooks fire during plan mode — hooks DO fire during plan mode (Read confirmed). Whether Write/Edit hooks fire during plan mode is an open question (see below).
+- **Open question (D1.5c):** Does plan mode suppress Write/Edit tool calls entirely, or can writes still occur (e.g. to the plan file)? If writes happen, does the hook see `permission_mode: "plan"`? This matters for routing — plan-mode writes should always PASS.
+- **Feeds:** HookInput dataclass should add `agent_id: str = ""` and `agent_type: str = ""` as optional fields. Both land in `raw` dict today but should be promoted to first-class fields for agent-aware routing. Also add `permission_mode` to routing decision factors (plan mode → always PASS).
 
 ### 1.6 — Implement transcript-based decision factors (previous_tool, is_retry)
 - **Status:** 🟢 Done
