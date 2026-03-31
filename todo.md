@@ -235,7 +235,31 @@
   - Net formula: (raw Read cost) − (redirect overhead) − (MCP response cost)
   - Use transcript mining baselines from 1.4 for per-extension token cost estimates
   - Per-tool breakdown: how much each redirect type saves on average
+  - **See 1.3a** for MCP call overhead measurement and routing breakeven calibration (prerequisite for threshold tuning)
   - **Sub-check (from hooks-optimizer T3c):** Verify jCodeMunch savings aren't double-counted — compare our JSONL-aggregated totals against `_meta.total_tokens_saved` from jCodeMunch MCP responses. Delta = double-counted or untracked calls.
+
+### 1.3a — Measure MCP call overhead & routing breakeven point
+- **Status:** 🔴 Not started
+- **Blocked by:** —
+- **Goal:** Empirically measure the token cost of each MCP routing action so we can calculate the minimum file size at which redirecting actually saves tokens (breakeven point). Without this, routing decisions are directionally correct but not calibrated.
+- **Plan:** _TBD_
+- **What to measure:**
+  - **MCP call overhead:** tokens consumed by the MCP request + response for each redirect target:
+    - `mcp__jcodemunch__get_symbol_source` (per symbol)
+    - `mcp__jcodemunch__search_symbols` (discovery call)
+    - `mcp__jdocmunch__get_section` (per section)
+    - `mcp__jdocmunch__search_sections` (discovery call — known to return 0 saved)
+    - `mcp__context7__query-docs` (for library docs)
+    - `ctx_execute` / `ctx_execute_file` (context-mode sandbox)
+  - **Raw Read cost baseline:** token cost of reading files of varying sizes (from 1.4 transcript data — use `reports/transcript-baseline.json` percentile distribution)
+  - **Net savings formula:** `saved = raw_read_tokens − mcp_overhead_tokens − mcp_response_tokens`
+  - **Breakeven threshold:** minimum `raw_read_tokens` where `saved > 0` per MCP tool
+- **Method:** Extract token counts from `_meta` fields in MCP responses (already logged). Cross-reference with transcript baseline input token counts for corresponding Read calls. Build a per-tool cost table.
+- **Output:** Breakeven table per MCP tool. e.g. "jCodeMunch get_symbol: break even at files > 80 lines". Feed into routing threshold calibration in Phase 2.
+- **Notes:**
+  - `track-genuine-savings.sh` already captures some of this — check if `_meta.tokens_saved` is net or gross
+  - context-mode overhead is harder to measure (sandbox startup cost amortized across queries)
+  - Hook overhead (engine.py latency) is separate from MCP overhead — measure both
 
 ### 1.5 — Empirically test `tool_use_id` availability in hook stdin
 - **Status:** ✅ Done
@@ -578,4 +602,4 @@
 
 ---
 
-_Last updated: 2026-03-31 — added tasks 1.6, 2.12–2.16; revised D1.2; Phase 3 v1.0 cleanup note; 1.5b done; plan mode findings_
+_Last updated: 2026-03-31 — added tasks 1.6, 2.12–2.16, 1.3a; revised D1.2; Phase 3 v1.0 cleanup note; 1.5b done; plan mode findings_
