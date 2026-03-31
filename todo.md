@@ -235,6 +235,7 @@
   - Net formula: (raw Read cost) − (redirect overhead) − (MCP response cost)
   - Use transcript mining baselines from 1.4 for per-extension token cost estimates
   - Per-tool breakdown: how much each redirect type saves on average
+  - **Sub-check (from hooks-optimizer T3c):** Verify jCodeMunch savings aren't double-counted — compare our JSONL-aggregated totals against `_meta.total_tokens_saved` from jCodeMunch MCP responses. Delta = double-counted or untracked calls.
 
 ### 1.5 — Empirically test `tool_use_id` availability in hook stdin
 - **Status:** ✅ Done
@@ -535,7 +536,22 @@
   - Existing triggers: PostToolUse after Edit/Write (tasks 2.5, 2.6), watch mode (task 2.4).
   - Questions: Should SessionStart always re-index? What if index is fresh (indexed < 5min ago)?
   - File watcher (jCodeMunch watch mode) vs PostToolUse hook: are they complementary or redundant?
+  - **Cron fallback (from hooks-optimizer T4c):** Evaluate `CronCreate` (e.g. every 2min) as a simpler alternative to hook-triggered reindex. Pros: no hook latency, survives hook failures. Cons: 0–2min staleness window, runs even when idle.
   - Deferred from Phase 1 scope per design spec "Not In Scope" table.
+
+### 2.16 — Per-file-type re-index decision matrix
+- **Status:** 🔴 Not started
+- **Blocked by:** 2.5, 2.6
+- **Goal:** Define which tool(s) to re-index for each file type after a Write/Edit, so the PostToolUse hook re-indexes only what's relevant and avoids unnecessary work.
+- **Plan:** _TBD_
+- **Notes:**
+  - Three orthogonal outcomes per written file: re-index jCodeMunch, re-index jDocMunch, neither, or both
+  - jCodeMunch: Tier 1 code extensions (45 exts) → always re-index. Tier 2/3 → log only, no re-index in Phase 2. Non-code files → skip.
+  - jDocMunch: doc extensions (.md, .rst, .txt etc.) → re-index. `.json`/`.yaml` only if OpenAPI structure (hard to detect at hook level — Phase 2: PASS, log for later).
+  - Overlap case: `.md` files edited by code-writing agents → re-index jDocMunch only (not jCodeMunch).
+  - Decision belongs in the engine pipeline as a new `PostToolUse` step type, not in shell hooks.
+  - Must handle: file deleted (skip re-index), file renamed (re-index new path, remove old), write failed (skip).
+  - Feeds into: 2.5 (jDocMunch re-index), 2.6 (jCodeMunch re-index), 2.15 (unified trigger policy).
 
 ---
 
@@ -562,4 +578,4 @@
 
 ---
 
-_Last updated: 2026-03-27 — added tasks 1.6, 2.12–2.15; revised D1.2; Phase 3 v1.0 cleanup note_
+_Last updated: 2026-03-31 — added tasks 1.6, 2.12–2.16; revised D1.2; Phase 3 v1.0 cleanup note; 1.5b done; plan mode findings_
