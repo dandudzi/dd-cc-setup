@@ -256,6 +256,18 @@
   - **Breakeven threshold:** minimum `raw_read_tokens` where `saved > 0` per MCP tool
 - **Method:** Extract token counts from `_meta` fields in MCP responses (already logged). Cross-reference with transcript baseline input token counts for corresponding Read calls. Build a per-tool cost table.
 - **Output:** Breakeven table per MCP tool. e.g. "jCodeMunch get_symbol: break even at files > 80 lines". Feed into routing threshold calibration in Phase 2.
+- **Findings:** `docs/findings/015-token-economics-findings.md` — full empirical analysis (deny chains, turn costs, cache, formula)
+- **Research sub-tasks (R1–R8, all feeding into 1.3 + 1.3a):**
+  - ✅ **R1:** MCP tool schema overhead in system prompt (fixed per-session cost)
+  - ✅ **R2:** `_meta` JSON wrapper overhead as fraction of MCP response
+  - ✅ **R3:** ToolSearch detour isolated cost (currently baked into chain_overhead)
+  - ✅ **R4:** Impact of fixing hook crash messages ("No stderr output") on chain length and ToolSearch rate
+  - **R5:** Cost of reindex prompting vs read prompting (index_folder chains vs Read chains)
+  - ✅ **R6:** Savings from offloading indexing to PostToolUse/cron — **53,655 tok direct savings** (105 post-deny chains × 511 tok). Net 64K–86K tok with indirect savings at 25–75% elimination. PostToolUse preferred over cron (4.09 triggers/session vs ~15). Coverage gap only 1.5% (Bash file creates). PostToolUse/cron token cost ≈ 0 (executes outside model context). `Findings: docs/findings/015-token-economics-findings.md §13`
+  - ✅ **R7:** Random exploration — 21 patterns measured across 1,432 sessions. Top findings: P5 (16M input tok from oversized Read results, 43.8% from raw Read), P9 (12M input tok from ignored tool results), P2 (2.3M output tok from repeated identical calls, incl. 427 redundant index_folder/local calls), P3 (2.6M output tok pure-text turns), P16 (25% sessions end with expensive final turn). `Findings: docs/findings/016-random-findings-exploration.md`
+  - ✅ **R8:** LSP tool usage across sessions — **effectively unused**: 2 calls across 1,431 sessions (0.07%), both failed (`jdtls` server not ready). No routing needed now. Phase 4 added to accommodate LSP once Phase 2 hooks are live.
+  - ✅ **R6b:** Total count of index_folder/index_local calls across all sessions — what % are reactive (post-deny, forced by session-gate) vs proactive (session-start, explicit)? Validates whether PostToolUse reindex would cover the majority of reactive cases.
+  - ✅ **R9:** Cache miss monitoring — baseline is 0 misses. Added to `015-token-economics-findings.md §14` as Phase 2 monitoring prerequisite: track `cache_creation_input_tokens` + `cache_read_input_tokens` per tool type; alert if MCP miss rate diverges >10% from pre-Phase-2 baseline after routing goes live.
 - **Notes:**
   - `track-genuine-savings.sh` already captures some of this — check if `_meta.tokens_saved` is net or gross
   - context-mode overhead is harder to measure (sandbox startup cost amortized across queries)
@@ -367,11 +379,46 @@
   - Bounded vs unbounded git output is RTK's concern, not a routing decision
   - All current hooks fail-open on missing jq — engine must define explicit degradation policy
 
+### 1.7 — Investigate 1,063 consecutive pure-text assistant turns
+- **Status:** 🔴 Not started
+- **Goal:** Classify the 1,063 assistant turns preceded by another assistant turn with no tool calls (from R7-P3). Determine what fraction are: (1) plan summaries, (2) streaming artifacts, (3) recovery-tax turns, (4) subagent reports. Sample 50–100 turns from transcripts and label manually or by heuristic.
+- **Output:** Classification breakdown table, recommendation on whether structured output format (JSON vs prose) for subagent reports would reduce tokens. Append findings to `docs/findings/016-random-findings-exploration.md §P3`.
+- **Notes:** These are 841k output tokens total. If subagent prose summaries dominate, structured JSON output is a high-leverage fix (converts 15k tok prose → 1–2k structured payload).
+
+---
+
+### 1.8 — Investigate P16 session-end waste: compaction vs real final turns
+- **Status:** 🔴 Not started
+- **Goal:** Of the 358 sessions with high-cost final turns (avg 3,235 tok), determine what fraction are compaction artifacts (32k tok summary) vs real expensive work. Sample 20–30 sessions, check if final turn is a compaction summary or genuine task output.
+- **Output:** Breakdown: compaction% vs real%. If compaction dominates, no action needed (outside billable context). If real work dominates, identify what type (code generation, long explanation) and whether it can be structured differently.
+- **Notes:** The 32k compaction turn appears across P1, P3, and P16 — likely inflating all three counts. Resolving this clarifies true waste vs artifact.
+
+---
+
+### 1.9 — Investigate same-tool repetition motifs: distinguish waste from normal workflow
+- **Status:** 🔴 Not started
+- **Goal:** From A2 motif data, sample `Read→Read→Read` (3,498×), `Bash→Bash→Bash` (2,006×), and `Edit→Edit→Edit` (1,191×) chains. Classify each as: (a) legitimate multi-file workflow, (b) redundant repeat (P2), (c) reformulation loop (P7). Quantify the waste subset within each motif.
+- **Output:** Per-motif waste fraction table. Feeds #56 follow-up and validates whether P2 repeat counts are dominated by legitimate chains or true waste.
+- **Notes:** Task created from R7-A2 discussion. Blocked by nothing — can run against transcript corpus directly.
+
 ---
 
 ## Phase 2: Hook Routing System
 
 > The intelligent routing layer — categorize actions and steer them to token-efficient tools.
+
+> **✅ R7-P4 conclusion (2026-04-01):** Dead-end fail chains analysis shows hooks must follow two rules:
+> 1. **Block the same chain at most once.** If the model retries the identical call after a deny, allow it through (loop-breaker). Repeated blocking of the same call drives 800+ turn pathological sessions.
+> 2. **Every deny output must be descriptive.** Tell the agent exactly what to do instead — not just "blocked" but "Use `mcp__jcodemunch__get_file_content` for Python files instead of Read." Ambiguous hook errors cause the model to retry blindly rather than switching strategy.
+
+> **✅ R7-P7 conclusion (2026-04-01):** Grep reformulation loop analysis (268 instances, 48k tokens) shows the Grep hook must handle two cases:
+> 1. **Empty result → suggest jCodeMunch.** When Grep returns no matches and the pattern looks like a code search (identifier, function name, camelCase), the deny message must say: "No results — use `mcp__jcodemunch__search_symbols` for code symbols or `mcp__jcodemunch__search_text` for text search instead of Grep." This breaks the retry-without-changing-tool loop (112 Grep reformulation loops observed).
+> 2. **Detect exact-repeat Grep (sim=1.0).** If the same Grep pattern fires within 5 turns with identical input, treat as P2 repeat: log a `repeat_call` event and let it pass (loop-breaker rule from P4). Do not block — the result may have changed. But the deny message on first empty result must be strong enough that the model switches tools instead of re-querying.
+
+> **✅ R7-P14 conclusion (2026-04-01):** Over-broad discovery analysis (388 instances, 54k tokens) shows Glob and Grep hooks must handle large-result existence checks:
+> 1. **Large Glob result with no followup = existence check.** When Glob returns ≥500 chars and PostToolUse detects 0 followup tool calls in the next 3 turns, log an `over_broad_discovery` event. Do not block — observation only in Phase 2.
+> 2. **Proactive hint on large Glob results.** When Glob input looks like a broad pattern (no extension filter, home directory path, wildcard-only), the hook output should append: "Tip: if you only need to check existence, use `Bash test -e <path>` or narrow the Glob pattern to avoid loading large listings into context."
+> 3. **Grep existence-check pattern.** Same rule applies to Grep calls on broad paths (e.g. `~/.claude`, home dir) that return >500 chars with no followup. Hint: use `Bash ls -1 | grep <pattern>` or a narrower path for existence checks.
 
 ### Decision Registry — Phase 2
 | # | Decision | Outcome | Decided | Linked Step |
@@ -435,6 +482,11 @@
   - Options: (a) call the running MCP server instance, (b) use `additionalContext` to tell Claude to re-index, (c) rely on session-level periodic re-index, (d) pipe to `uvx jdocmunch-mcp serve --transport stdio` from shell
   - Same pattern as jCodeMunch's Index Hook, but without the shell CLI convenience
   - Must decide: immediate re-index vs deferred (next read triggers re-index)
+  - **Empirical opportunity (from 1.3a R6b analysis, 1,486 transcripts):** 47% of all index calls are reactive (22% post-deny, 25% post-ToolSearch). Post-deny: 67 index_local calls triggered by deny chains, avg 477 tok/chain = ~32K tokens recoverable. Zero proactive session-start indexing appears in transcripts (SessionStart hooks fire outside tool_use flow). PostToolUse:Write+Edit would convert reactive calls to proactive — eliminating the deny chain entirely.
+  - **Token cost confirmed (from 1.3a R5 analysis, 1,491 transcripts):** Reindex chains cost mean=511 tok (P50=474) — **3.3× more expensive** than a plain read retry (mean=157). Dual reindex chains (both jCodeMunch + jDocMunch) cost 676 tok mean. PostToolUse reindexing eliminates these chains entirely: 75 reactive reindex chains × 511 tok = ~38K tokens recoverable across corpus.
+  - **Open question:** Is PostToolUse:Write+Edit coverage sufficient? New files created via Bash (tee, cat >, touch) won't trigger Write/Edit hooks — would remain stale until a Read deny occurs.
+  - **Open question:** Latency tradeoff — async background reindex (fire-and-forget via &) vs blocking inline reindex (adds latency to every Write/Edit PostToolUse).
+  - **✅ R6 confirmed (2026-04-01, 405 sessions):** PostToolUse is worth implementing. 38.3% of index calls are post-deny (105 chains × 511 tok = 53,655 tok direct savings). Coverage gap from Bash file creation is only 1.5% — negligible. PostToolUse preferred over cron: 4.09 triggers/session vs ~15. Net savings 64K–86K tokens.
 
 ### 2.6 — jCodeMunch PostToolUse conditional re-indexing
 - **Status:** 🔴 Not started
@@ -448,6 +500,11 @@
   - PostToolUse hook calls `uvx jcodemunch-mcp index_file` via MCP (not shell) — same as current jCodeMunch Index Hook
   - Must detect: was the file actually modified? (check tool_output for success vs failure)
   - Incremental indexing (`incremental=true`) makes double-index cheap — only changed files re-processed
+  - **Empirical opportunity (from 1.3a R6b analysis, 1,486 transcripts):** 47% of all index calls are reactive (22% post-deny, 25% post-ToolSearch). Post-deny: 65 index_folder calls triggered by deny chains, avg 477 tok/chain = ~31K tokens recoverable. PostToolUse hook eliminates the Read→deny→index_folder→retry loop entirely.
+  - **Token cost confirmed (from 1.3a R5 analysis, 1,491 transcripts):** Reindex chains cost mean=511 tok (P50=474) — **3.3× more expensive** than a plain read retry (mean=157). Dual reindex chains (both tools) cost 676 tok mean. PostToolUse reindexing eliminates these chains entirely: 75 reactive reindex chains × 511 tok = ~38K tokens recoverable across corpus.
+  - **Open question:** Is PostToolUse:Write+Edit coverage sufficient? Bash-created files won't trigger Write/Edit PostToolUse. Accept as edge case or add PostToolUse:Bash pattern matching?
+  - **Open question:** Latency tradeoff — async (index_folder &, no latency but staleness window) vs blocking (always-fresh, adds 100–500ms per write).
+  - **✅ R6 confirmed (2026-04-01, 405 sessions):** PostToolUse is worth implementing. 38.3% of index calls are post-deny (105 chains × 511 tok = 53,655 tok direct savings). Bash coverage gap is only 1.5% — accept as edge case. PostToolUse preferred over cron: 4.09 triggers/session vs ~15. Net savings 64K–86K tokens.
 
 ### 2.7 — RTK hook conflict detection & ownership
 - **Status:** 🔴 Not started
@@ -577,6 +634,33 @@
   - Must handle: file deleted (skip re-index), file renamed (re-index new path, remove old), write failed (skip).
   - Feeds into: 2.5 (jDocMunch re-index), 2.6 (jCodeMunch re-index), 2.15 (unified trigger policy).
 
+### 2.17 — Design deny message redirect hint mapping
+- **Status:** 🔴 Not started
+- **Blocked by:** 2.1
+- **Goal:** For every deny the engine issues, determine which specific MCP tool + call pattern to include in the redirect hint, so Claude routes directly to the correct tool without a ToolSearch detour.
+- **Plan:** _TBD → `docs/plans/`_
+- **Context (from R4 findings):** Redirect hints naming a specific tool achieve 49.4% direct MCP routing vs 20% for clean denies and 25.5% for crashes — 2.5× improvement. The deny message is only 12-52 tokens (negligible cost), so specific guidance is free.
+- **Notes:**
+  - Need a mapping: file extension (or pattern) → specific MCP tool + example invocation
+  - Example: `.py/.ts/.go` → `mcp__jcodemunch__get_file_content` or `mcp__jcodemunch__get_symbol_source`
+  - Example: `.md/.rst/.txt` → `mcp__jdocmunch__search_sections` first, then `mcp__jdocmunch__get_section`
+  - Example: large Bash output → `mcp__plugin_context-mode_context-mode__ctx_execute`
+  - Example: stale index → `mcp__jcodemunch__index_folder` + retry
+  - Hint format matters: "Use `mcp__jcodemunch__get_file_content(repo=..., file_path=...)` instead" is more actionable than just "Use jCodeMunch"
+  - Consider: include the exact MCP call with inferred arguments (repo, file_path) pre-filled from the denied tool_input — Claude can act immediately without needing to discover arguments
+
+### 2.18 — Subagent prompt design: pass index freshness to skip redundant SessionStart reindex
+- **Status:** 🔴 Not started
+- **Blocked by:** 2.15
+- **Goal:** Eliminate the 427 redundant `index_folder` + `index_local` calls caused by each spawned subagent independently running the SessionStart hook. Design a mechanism to pass index freshness from parent session to subagent so the hook skips reindex when the index is already fresh.
+- **Plan:** _TBD_
+- **Notes:**
+  - Root cause: subagents have no visibility into parent session's index state. Each fires SessionStart hook independently.
+  - Proposed approach: pass `JCODEMUNCH_INDEXED_AT=<iso8601>` env var or JSON metadata in the agent spawn prompt. SessionStart hook skips reindex if `JCODEMUNCH_INDEXED_AT` is within the freshness threshold defined in 2.15.
+  - Also define a structured subagent prompt template that includes: project path, index freshness timestamp, parent session context summary.
+  - Measure reduction in `index_folder`/`index_local` calls after implementation.
+  - Source: R7-P2 analysis (427 redundant index calls in 405 sessions) + R7-A2 (`Agent×Agent×Agent` motif 734×).
+
 ---
 
 ## Phase 3: Deployment & Portability _(future — notes only)_
@@ -591,6 +675,44 @@
 
 ---
 
+## Phase 4: LSP Integration _(future — after Phase 2 hooks live)_
+
+> **Prerequisite:** Phase 2 PostToolUse/hook routing must be live and validated.
+> **Motivation:** LSP currently appears in 0.07% of sessions (2 calls, both failed — R8, 2026-04-01, n=1,431). Not worth routing today, but once Phase 2 hook infrastructure is established, LSP can be layered in cheaply. LSP covers cross-file navigation (references, definitions, diagnostics) that jCodeMunch/jDocMunch don't handle.
+
+### 4.1 — Warm LSP server at SessionStart
+- **Status:** 🔴 Not started
+- **Goal:** Detect project language and pre-start the LSP server at session open so it's ready before the first LSP call. Prevents the "server is starting" failure observed in R8.
+- **Notes:**
+  - R8: both LSP calls failed with `Cannot send notification to LSP server 'plugin:jdtls-lsp:jdtls': server is starting`
+  - SessionStart hook should detect language (from project files: `pom.xml` → Java/jdtls, `tsconfig.json` → tsserver, `pyproject.toml` → pylsp/pyright) and warm the server
+  - Set env flag `LSP_READY=1` once server responds; downstream hooks check this before routing to LSP
+
+### 4.2 — Add LSP to routing decision matrix
+- **Status:** 🔴 Not started
+- **Goal:** Define when the engine routes to LSP vs jCodeMunch, based on operation type and LSP availability.
+- **Notes:**
+  - LSP strengths: cross-file references, type resolution, rename, diagnostics — things jCodeMunch can't do
+  - jCodeMunch strengths: fast symbol lookup, sliced reads, zero server startup cost
+  - Candidate rule: prefer LSP for `find_references` / `go_to_definition` / `diagnostics`; prefer jCodeMunch for `get_symbol` / `get_file_content`
+  - Only route to LSP if `LSP_READY=1`; fall back to jCodeMunch otherwise
+
+### 4.3 — Measure LSP call cost vs jCodeMunch equivalent
+- **Status:** 🔴 Not started
+- **Goal:** Empirically measure token cost and latency of LSP operations vs jCodeMunch equivalents to calibrate routing thresholds.
+- **Notes:**
+  - R8 corpus had only 2 LSP calls — insufficient for stats. Re-run after LSP is integrated and usage rises above noise floor.
+  - Track: output_tokens per operation type, result content length, error rate, server startup latency, call latency
+
+### 4.4 — PostToolUse: invalidate LSP diagnostics cache on file write
+- **Status:** 🔴 Not started
+- **Goal:** After Write/Edit, notify LSP server of the change so diagnostics stay fresh — mirrors the PostToolUse reindex pattern from Phase 2 (tasks 2.5, 2.6).
+- **Notes:**
+  - LSP `textDocument/didChange` or `textDocument/didSave` notification keeps server state in sync
+  - Can be triggered from the same PostToolUse hook infrastructure as jCodeMunch/jDocMunch reindex
+
+---
+
 ---
 
 ## Backlog / Config Fixes
@@ -602,4 +724,4 @@
 
 ---
 
-_Last updated: 2026-03-31 — added tasks 1.6, 2.12–2.16, 1.3a; revised D1.2; Phase 3 v1.0 cleanup note; 1.5b done; plan mode findings_
+_Last updated: 2026-04-01 — R6 complete: 53,655 tok direct savings from PostToolUse reindexing; Section 13 added to findings 015_

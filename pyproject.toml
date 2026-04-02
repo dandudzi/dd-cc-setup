@@ -11,6 +11,10 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.4",
 ]
+observatory = [
+    "streamlit>=1.30",
+    "pandas>=2.0",
+]
 
 [tool.ruff]
 target-version = "py312"
