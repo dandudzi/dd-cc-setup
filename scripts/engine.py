@@ -1,4 +1,9 @@
-"""Observability pipeline engine for Claude Code hook events."""
+"""Observability pipeline engine for Claude Code hook events.
+
+NOTE: Must be invoked as a module to resolve package-absolute imports:
+    uv run python -m scripts.engine
+Running as a script (python scripts/engine.py) raises ModuleNotFoundError.
+"""
 
 from __future__ import annotations
 
