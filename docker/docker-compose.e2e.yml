@@ -1,0 +1,12 @@
+services:
+  e2e:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.e2e
+    volumes:
+      # Mount tests/e2e so snapshot baselines written in Docker persist to the host.
+      # Run with --update-snapshots to regenerate baselines: ./scripts/run-e2e.sh --update-snapshots
+      - ../tests/e2e:/app/tests/e2e
+    environment:
+      # Use browsers bundled in the Playwright Docker image
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright

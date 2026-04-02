@@ -21,7 +21,7 @@ lib64/
 # uv
 .venv/
 .python-version-uv
-uv.lock
+# uv.lock is intentionally tracked — required for reproducible Docker builds
 
 # Distribution / packaging
 .Python

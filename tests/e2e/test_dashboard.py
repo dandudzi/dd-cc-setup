@@ -84,9 +84,9 @@ def test_dashboard_nav_has_f2_link(page: Page, app_url: str):
 # Screenshot regression
 # ---------------------------------------------------------------------------
 
-def test_dashboard_screenshot(page: Page, app_url: str):
-    """Full-page screenshot for visual regression baseline."""
+def test_dashboard_screenshot(page: Page, app_url: str, assert_snapshot):
+    """Visual regression snapshot — fails on pixel drift vs committed baseline."""
     _goto_dashboard(page, app_url)
     page.get_by_role("button", name="Load Data").click()
     page.wait_for_load_state("networkidle")
-    page.screenshot(path="tests/e2e/screenshots/dashboard.png", full_page=True)
+    assert_snapshot(page.screenshot(full_page=True), "dashboard.png")

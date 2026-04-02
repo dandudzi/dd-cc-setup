@@ -107,8 +107,8 @@ def test_f2_saved_checks_section_visible(page: Page, app_url: str):
 # Screenshot regression
 # ---------------------------------------------------------------------------
 
-def test_f2_screenshot(page: Page, app_url: str):
-    """Full-page screenshot for visual regression baseline."""
+def test_f2_screenshot(page: Page, app_url: str, assert_snapshot):
+    """Visual regression snapshot — fails on pixel drift vs committed baseline."""
     # Server can become temporarily unresponsive after many tests; retry navigation
     for attempt in range(3):
         try:
@@ -123,4 +123,4 @@ def test_f2_screenshot(page: Page, app_url: str):
     _wait_for_streamlit(page)
     page.get_by_role("button", name="Load Data").click()
     page.wait_for_load_state("networkidle")
-    page.screenshot(path="tests/e2e/screenshots/f2_cache_miss.png", full_page=True)
+    assert_snapshot(page.screenshot(full_page=True), "f2_cache_miss.png")

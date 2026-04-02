@@ -18,6 +18,7 @@ observatory = [
 e2e = [
     "playwright>=1.40",
     "pytest-playwright>=0.4",
+    "dd-cc-setup[observatory]",  # E2E tests exercise the Streamlit Observatory app
 ]
 
 [tool.ruff]
@@ -30,6 +31,9 @@ ignore = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "e2e: End-to-end browser tests (requires playwright — install with: uv sync --extra e2e)",
+]
 
 [tool.coverage.run]
 source = ["scripts"]

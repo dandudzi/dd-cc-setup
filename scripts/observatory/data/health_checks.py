@@ -8,13 +8,20 @@ Storage: ~/.claude/observatory/health_checks.json
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 from typing import Literal
 
-_DEFAULT_PATH = Path.home() / ".claude" / "observatory" / "health_checks.json"
+
+def _default_health_check_path() -> Path:
+    """Return health checks path, respecting OBSERVATORY_HEALTH_DIR env override (used in E2E tests)."""
+    override = os.environ.get("OBSERVATORY_HEALTH_DIR")
+    if override:
+        return Path(override) / "health_checks.json"
+    return Path.home() / ".claude" / "observatory" / "health_checks.json"
 
 # Sentinel used in category_a to request the aggregate (overall) value instead
 # of a per-category value. Only valid for F2 absolute metrics.
@@ -86,7 +93,7 @@ def _backfill(item: dict) -> dict:  # type: ignore[type-arg]
 
 def load_health_checks(path: Path | None = None) -> list[HealthCheck]:
     """Load health checks from JSON. Returns [] when file does not exist."""
-    p = path or _DEFAULT_PATH
+    p = path or _default_health_check_path()
     if not p.exists():
         return []
     data = json.loads(p.read_text(encoding="utf-8"))
@@ -95,7 +102,7 @@ def load_health_checks(path: Path | None = None) -> list[HealthCheck]:
 
 def save_health_checks(checks: list[HealthCheck], path: Path | None = None) -> None:
     """Persist health checks to JSON, creating parent directories as needed."""
-    p = path or _DEFAULT_PATH
+    p = path or _default_health_check_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps([asdict(c) for c in checks], indent=2), encoding="utf-8")
 

@@ -49,5 +49,36 @@ Add to `.claude/settings.local.json`:
 ## Tests
 
 ```bash
+# Unit tests (fast, no browser required)
+uv run pytest tests/ --ignore=tests/e2e
+
+# All tests including E2E (playwright must be installed)
 uv run pytest
+```
+
+## E2E Tests
+
+E2E tests run Playwright against the Observatory Streamlit app. Tests are hermetic — they use seeded fixture data and do not read from `~/.claude/`.
+
+### Run in Docker (recommended — reproducible browser rendering)
+
+```bash
+# First run: build image and generate snapshot baselines
+./scripts/run-e2e.sh --build --update-snapshots
+
+# Subsequent runs: compare against committed baselines
+./scripts/run-e2e.sh
+
+# Run a specific test file
+./scripts/run-e2e.sh tests/e2e/test_dashboard.py -v
+```
+
+Snapshot baselines are stored in `tests/e2e/test_*.py-snapshots/` and committed to git. Regenerate them after intentional UI changes with `--update-snapshots`.
+
+### Run locally (faster, less reproducible screenshots)
+
+```bash
+uv sync --extra e2e
+playwright install chromium
+uv run pytest tests/e2e/
 ```

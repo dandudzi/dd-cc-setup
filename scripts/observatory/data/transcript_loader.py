@@ -6,12 +6,19 @@ Each caller (report) decides how to slice the data.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from scripts.observatory.data.parser import ApiCall, deduplicate_api_calls, discover_transcripts, parse_session
 from scripts.observatory.data.filters import FilterSpec, filter_transcripts
 
-_DEFAULT_BASE_DIR = Path.home() / ".claude" / "projects"
+
+def _default_base_dir() -> Path:
+    """Return transcript root, respecting OBSERVATORY_DATA_DIR env override (used in E2E tests)."""
+    override = os.environ.get("OBSERVATORY_DATA_DIR")
+    if override:
+        return Path(override)
+    return Path.home() / ".claude" / "projects"
 
 
 def load_api_calls(
@@ -27,7 +34,7 @@ def load_api_calls(
     Returns:
         Flat list of deduplicated ApiCall objects across all matching sessions.
     """
-    root = base_dir or _DEFAULT_BASE_DIR
+    root = base_dir or _default_base_dir()
     all_transcripts = discover_transcripts(root)
     filtered = filter_transcripts(all_transcripts, spec)
 

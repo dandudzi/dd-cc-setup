@@ -1,0 +1,20 @@
+# E2E test image — Playwright + Python + uv
+# Browsers are pre-installed in the base image matching the locked Playwright version.
+FROM mcr.microsoft.com/playwright/python:v1.58.0-noble
+
+# Install uv from the official standalone image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /app
+
+# Copy dependency files first for Docker layer caching — only reinstalls if these change
+COPY pyproject.toml uv.lock ./
+
+# Install all extras: dev (pytest), observatory (streamlit), e2e (playwright)
+RUN uv sync --frozen --all-extras
+
+# Copy the rest of the project
+COPY . .
+
+# Run E2E tests by default
+CMD ["uv", "run", "pytest", "tests/e2e/", "-v"]
