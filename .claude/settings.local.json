@@ -86,7 +86,8 @@
       "Bash(/Users/daniel/Repos/dd-cc-setup/.venv/bin/ruff check:*)",
       "Bash(find ~/.claude/projects/ -name *.jsonl -type f -newer ~/.claude/projects/)",
       "Bash(find /Users/daniel/Repos/dd-cc-setup -name *track* -o -name *saving* -o -name *genuine*)",
-      "Bash(find /Users/daniel/Repos/dd-cc-setup -name settings*.json -not -path *node_modules* -not -path *.worktrees*)"
+      "Bash(find /Users/daniel/Repos/dd-cc-setup -name settings*.json -not -path *node_modules* -not -path *.worktrees*)",
+      "mcp__jcodemunch__index_file"
     ]
   },
   "hooks": {

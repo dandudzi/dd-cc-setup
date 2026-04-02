@@ -61,6 +61,8 @@ class TokenUsage:
     output_tokens: int
     cache_creation_input_tokens: int
     cache_read_input_tokens: int
+    cache_creation_5m_tokens: int = 0  # ephemeral_5m_input_tokens
+    cache_creation_1h_tokens: int = 0  # ephemeral_1h_input_tokens
 
 
 @dataclass(frozen=True)
@@ -315,9 +317,12 @@ def _extract_tool_results(entry: dict) -> tuple[ToolResult, ...]:  # type: ignor
 
 def _extract_usage(entry: dict) -> TokenUsage:  # type: ignore[type-arg]
     usage = entry.get("message", {}).get("usage", {})
+    cc = usage.get("cache_creation") or {}
     return TokenUsage(
         input_tokens=usage.get("input_tokens", 0),
         output_tokens=usage.get("output_tokens", 0),
         cache_creation_input_tokens=usage.get("cache_creation_input_tokens", 0),
         cache_read_input_tokens=usage.get("cache_read_input_tokens", 0),
+        cache_creation_5m_tokens=cc.get("ephemeral_5m_input_tokens", 0),
+        cache_creation_1h_tokens=cc.get("ephemeral_1h_input_tokens", 0),
     )

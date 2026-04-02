@@ -6,6 +6,7 @@ import json
 import pytest
 
 from scripts.observatory.data.health_checks import (
+    OVERALL_CATEGORY,
     HealthCheck,
     add_health_check,
     compute_actual_value,
@@ -248,3 +249,145 @@ class TestComputeActualValue:
 
     def test_content_ratio_none_when_b_content_missing(self):
         assert compute_actual_value(None, 968.0, None, None, "content_ratio") is None
+
+
+# ---------------------------------------------------------------------------
+# HealthCheck model extensions — category_b optional, report field
+# ---------------------------------------------------------------------------
+
+class TestHealthCheckModelExtensions:
+    def test_overall_category_constant_exported(self):
+        assert OVERALL_CATEGORY == "_overall"
+
+    def test_create_absolute_check_category_b_none(self):
+        hc = _make(category_b=None)
+        assert hc.category_b is None
+
+    def test_create_with_report_field(self):
+        hc = _make(report="f2_cache_miss")
+        assert hc.report == "f2_cache_miss"
+
+    def test_create_default_report_is_f1(self):
+        hc = _make()
+        assert hc.report == "f1_turn_cost"
+
+    def test_roundtrip_absolute_check(self, tmp_path):
+        hc = _make(category_b=None, report="f2_cache_miss")
+        path = tmp_path / "hc.json"
+        save_health_checks([hc], path)
+        loaded = load_health_checks(path)
+        assert loaded[0].category_b is None
+        assert loaded[0].report == "f2_cache_miss"
+
+    def test_backward_compat_default_report(self, tmp_path):
+        """Old JSON files without 'report' field load with report='f1_turn_cost'."""
+        hc = _make()
+        raw = {
+            "id": hc.id,
+            "name": hc.name,
+            "category_a": hc.category_a,
+            "category_b": hc.category_b,
+            "metric": hc.metric,
+            "expected": hc.expected,
+            "warning_threshold": hc.warning_threshold,
+            "error_threshold": hc.error_threshold,
+            "created_at": hc.created_at,
+            # no 'report' key
+        }
+        path = tmp_path / "hc.json"
+        path.write_text(json.dumps([raw]))
+        loaded = load_health_checks(path)
+        assert loaded[0].report == "f1_turn_cost"
+
+    def test_backward_compat_missing_category_b(self, tmp_path):
+        """Old JSON files without 'category_b' field load with category_b=None."""
+        hc = _make()
+        raw = {
+            "id": hc.id,
+            "name": hc.name,
+            "category_a": hc.category_a,
+            # no 'category_b'
+            "metric": hc.metric,
+            "expected": hc.expected,
+            "warning_threshold": hc.warning_threshold,
+            "error_threshold": hc.error_threshold,
+            "created_at": hc.created_at,
+            "report": "f1_turn_cost",
+        }
+        path = tmp_path / "hc.json"
+        path.write_text(json.dumps([raw]))
+        loaded = load_health_checks(path)
+        assert loaded[0].category_b is None
+
+
+# ---------------------------------------------------------------------------
+# compute_actual_value — F2 metrics
+# ---------------------------------------------------------------------------
+
+class TestComputeActualValueF2:
+    def test_miss_rate_returns_value(self):
+        result = compute_actual_value(
+            None, None, None, None, "miss_rate",
+            a_miss_rate=0.05,
+        )
+        assert result == pytest.approx(0.05)
+
+    def test_miss_rate_none_when_missing(self):
+        result = compute_actual_value(
+            None, None, None, None, "miss_rate",
+            a_miss_rate=None,
+        )
+        assert result is None
+
+    def test_miss_rate_overall_sentinel(self):
+        # When category_a == OVERALL_CATEGORY, caller passes overall rate as a_miss_rate
+        result = compute_actual_value(
+            None, None, None, None, "miss_rate",
+            a_miss_rate=0.0083,
+        )
+        assert result == pytest.approx(0.0083)
+
+    def test_miss_rate_delta(self):
+        result = compute_actual_value(
+            None, None, None, None, "miss_rate_delta",
+            a_miss_rate=0.10,
+            b_miss_rate=0.04,
+        )
+        assert result == pytest.approx(0.06)
+
+    def test_miss_rate_delta_none_when_a_missing(self):
+        result = compute_actual_value(
+            None, None, None, None, "miss_rate_delta",
+            a_miss_rate=None,
+            b_miss_rate=0.04,
+        )
+        assert result is None
+
+    def test_miss_rate_delta_none_when_b_missing(self):
+        result = compute_actual_value(
+            None, None, None, None, "miss_rate_delta",
+            a_miss_rate=0.10,
+            b_miss_rate=None,
+        )
+        assert result is None
+
+    def test_mean_miss_tokens_returns_value(self):
+        result = compute_actual_value(
+            None, None, None, None, "mean_miss_tokens",
+            a_mean_miss_tokens=4096.0,
+        )
+        assert result == pytest.approx(4096.0)
+
+    def test_mean_miss_tokens_none_when_missing(self):
+        result = compute_actual_value(
+            None, None, None, None, "mean_miss_tokens",
+            a_mean_miss_tokens=None,
+        )
+        assert result is None
+
+    def test_compute_status_works_with_miss_rate(self):
+        hc = _make(metric="miss_rate", category_b=None, expected=0.01,
+                   warning_threshold=0.005, error_threshold=0.02)
+        assert compute_status(hc, 0.012) == "OK"      # diff=0.002
+        assert compute_status(hc, 0.018) == "WARNING" # diff=0.008
+        assert compute_status(hc, 0.035) == "ERROR"   # diff=0.025

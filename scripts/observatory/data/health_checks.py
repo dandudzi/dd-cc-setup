@@ -16,33 +16,45 @@ from typing import Literal
 
 _DEFAULT_PATH = Path.home() / ".claude" / "observatory" / "health_checks.json"
 
-Metric = Literal["input_delta", "content_ratio"]
+# Sentinel used in category_a to request the aggregate (overall) value instead
+# of a per-category value. Only valid for F2 absolute metrics.
+OVERALL_CATEGORY = "_overall"
+
+Metric = Literal[
+    "input_delta",
+    "content_ratio",
+    "miss_rate",
+    "miss_rate_delta",
+    "mean_miss_tokens",
+]
 HealthCheckStatus = Literal["OK", "WARNING", "ERROR", "INSUFFICIENT"]
 
 
 @dataclass(frozen=True)
 class HealthCheck:
-    """A saved comparison between two tool categories."""
+    """A saved comparison between two tool categories (or an absolute check)."""
 
     id: str
     name: str
     category_a: str
-    category_b: str
+    category_b: str | None    # None → absolute check (single-category or overall)
     metric: Metric
     expected: float           # baseline value (auto-measured or user-defined)
     warning_threshold: float  # |actual - expected| <= this → OK
     error_threshold: float    # |actual - expected| <= this → WARNING, else ERROR
     created_at: str
+    report: str               # which report owns this check; used for dashboard dispatch
 
     @staticmethod
     def create(
         name: str,
         category_a: str,
-        category_b: str,
         metric: Metric,
         expected: float,
         warning_threshold: float,
         error_threshold: float,
+        category_b: str | None = None,
+        report: str = "f1_turn_cost",
     ) -> HealthCheck:
         return HealthCheck(
             id=str(uuid.uuid4()),
@@ -54,6 +66,7 @@ class HealthCheck:
             warning_threshold=warning_threshold,
             error_threshold=error_threshold,
             created_at=date.today().isoformat(),
+            report=report,
         )
 
 
@@ -62,13 +75,22 @@ class HealthCheck:
 # ---------------------------------------------------------------------------
 
 
+def _backfill(item: dict) -> dict:  # type: ignore[type-arg]
+    """Add missing fields from older JSON files for backward compatibility."""
+    if "report" not in item:
+        item = {**item, "report": "f1_turn_cost"}
+    if "category_b" not in item:
+        item = {**item, "category_b": None}
+    return item
+
+
 def load_health_checks(path: Path | None = None) -> list[HealthCheck]:
     """Load health checks from JSON. Returns [] when file does not exist."""
     p = path or _DEFAULT_PATH
     if not p.exists():
         return []
     data = json.loads(p.read_text(encoding="utf-8"))
-    return [HealthCheck(**item) for item in data]
+    return [HealthCheck(**_backfill(item)) for item in data]
 
 
 def save_health_checks(checks: list[HealthCheck], path: Path | None = None) -> None:
@@ -126,15 +148,17 @@ def compute_actual_value(
     b_input: float | None,
     b_content: float | None,
     metric: Metric,
+    *,
+    a_miss_rate: float | None = None,
+    b_miss_rate: float | None = None,
+    a_mean_miss_tokens: float | None = None,
 ) -> float | None:
     """Derive the scalar value for a metric from per-category stats.
 
-    Args:
-        a_input:   category_a mean_input_tokens
-        a_content: category_a mean_content_length
-        b_input:   category_b mean_input_tokens
-        b_content: category_b mean_content_length
-        metric:    which metric to compute
+    F1 metrics use a_input / a_content / b_input / b_content.
+    F2 metrics use a_miss_rate / b_miss_rate / a_mean_miss_tokens / b_mean_miss_tokens.
+    For absolute checks, the 'b_*' args are ignored; a_* carries the single value.
+    OVERALL_CATEGORY callers should pass the overall aggregate in the a_* slot.
 
     Returns:
         float value, or None when required data is missing.
@@ -143,7 +167,20 @@ def compute_actual_value(
         if a_input is None or b_input is None:
             return None
         return a_input - b_input
-    # content_ratio
-    if a_content is None or b_content is None:
-        return None
-    return b_content / a_content
+
+    if metric == "content_ratio":
+        if a_content is None or b_content is None:
+            return None
+        return b_content / a_content
+
+    if metric == "miss_rate":
+        # Absolute: a_miss_rate holds the value (per-category or overall).
+        return a_miss_rate  # None propagates naturally
+
+    if metric == "miss_rate_delta":
+        if a_miss_rate is None or b_miss_rate is None:
+            return None
+        return a_miss_rate - b_miss_rate
+
+    # mean_miss_tokens — absolute: a_mean_miss_tokens holds the value.
+    return a_mean_miss_tokens

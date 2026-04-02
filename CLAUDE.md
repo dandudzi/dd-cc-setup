@@ -39,6 +39,28 @@ The core idea: hooks intercept Claude's tool calls, categorize them against a JS
 
 ## Deployment
 
+## Running Tests
+
+```bash
+# Unit tests only (fast, no Streamlit required)
+uv run pytest tests/ --ignore=tests/e2e
+
+# E2E tests (requires Streamlit app running on localhost:8501)
+uv run streamlit run scripts/observatory/app.py &
+uv run pytest tests/e2e/ --base-url http://localhost:8501
+
+# Full suite
+uv run pytest tests/
+```
+
+## Running the Observatory
+
+```bash
+uv run streamlit run scripts/observatory/app.py
+```
+
+After updating parsing or compute code, **clear Streamlit cache** (hamburger menu → Clear cache) before expecting new values in the UI — `@st.cache_data` does not auto-invalidate when underlying functions change.
+
 ## Coding Rules
 
 - Comment complex logic

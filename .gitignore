@@ -86,6 +86,7 @@ uv-*.lock
 
 ### Reports (generated output) ###
 reports/
+!scripts/observatory/reports/
 
 ### Docs (generated) ###
 docs/generated/
