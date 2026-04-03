@@ -8,11 +8,14 @@ Storage: ~/.claude/observatory/health_checks.json
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from typing import Literal
 
 
@@ -92,19 +95,34 @@ def _backfill(item: dict) -> dict:  # type: ignore[type-arg]
 
 
 def load_health_checks(path: Path | None = None) -> list[HealthCheck]:
-    """Load health checks from JSON. Returns [] when file does not exist."""
+    """Load health checks from JSON. Returns [] when file does not exist or is corrupt."""
     p = path or _default_health_check_path()
     if not p.exists():
         return []
-    data = json.loads(p.read_text(encoding="utf-8"))
-    return [HealthCheck(**_backfill(item)) for item in data]
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        logger.warning("health_checks: invalid JSON in %s — returning []: %s", p, exc)
+        return []
+    if not isinstance(data, list):
+        logger.warning("health_checks: expected list in %s, got %s — returning []", p, type(data).__name__)
+        return []
+    results: list[HealthCheck] = []
+    for i, item in enumerate(data):
+        try:
+            results.append(HealthCheck(**_backfill(item)))
+        except Exception as exc:
+            logger.warning("health_checks: skipping entry %d in %s — %s", i, p, exc)
+    return results
 
 
 def save_health_checks(checks: list[HealthCheck], path: Path | None = None) -> None:
-    """Persist health checks to JSON, creating parent directories as needed."""
+    """Persist health checks to JSON atomically (write-then-rename)."""
     p = path or _default_health_check_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps([asdict(c) for c in checks], indent=2), encoding="utf-8")
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps([asdict(c) for c in checks], indent=2), encoding="utf-8")
+    os.rename(tmp, p)
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +195,8 @@ def compute_actual_value(
 
     if metric == "content_ratio":
         if a_content is None or b_content is None:
+            return None
+        if a_content == 0.0:
             return None
         return b_content / a_content
 

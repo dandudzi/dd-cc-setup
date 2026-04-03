@@ -22,11 +22,11 @@ from scripts.observatory.data.health_checks import (
     update_health_check,
 )
 from scripts.observatory.data.parser import ApiCall, discover_transcripts
-from scripts.observatory.data.transcript_loader import load_api_calls
+from scripts.observatory.data.transcript_loader import get_base_dir, load_api_calls
 from scripts.observatory.reports.f1_turn_cost.compute import compute_turn_cost
 from scripts.observatory.reports.f2_cache_miss.compute import compute_cache_miss
+from scripts.observatory.widgets.health_check_form import render_saved_checks
 
-_BASE_DIR = Path.home() / ".claude" / "projects"
 
 _STATUS_COLOR = {
     "OK":           "🟢",
@@ -44,7 +44,7 @@ st.sidebar.title("Filters")
 
 @st.cache_data(show_spinner=False)
 def _all_transcripts() -> list:
-    return discover_transcripts(_BASE_DIR)
+    return discover_transcripts(get_base_dir())
 
 
 all_tf = _all_transcripts()
@@ -219,42 +219,50 @@ if not health_checks:
 # Health check grid
 # ---------------------------------------------------------------------------
 
-label = f"{len(health_checks)} health check{'s' if len(health_checks) != 1 else ''}"
-with st.expander(label, expanded=True):
+def _eval_dashboard_check(hc: HealthCheck) -> tuple[float | None, str, str]:
+    """Evaluate a health check using the dashboard's live api_calls data."""
+    if api_calls:
+        eval_fn = _REPORT_COMPUTE.get(hc.report)
+        if eval_fn is None:
+            return None, "INSUFFICIENT", f"unknown report '{hc.report}'"
+        actual, status, samples = eval_fn(api_calls, hc)
+    else:
+        actual = None
+        status = "INSUFFICIENT"
+        samples = "no data"
+    return actual, status, samples
+
+
+# Render with an optional warning if data is not loaded
+_label = f"{len(health_checks)} health check{'s' if len(health_checks) != 1 else ''}"
+with st.expander(_label, expanded=True):
     if not api_calls:
         st.warning("Load data from the sidebar to see live status.")
-
     for hc in health_checks:
-        if api_calls:
-            eval_fn = _REPORT_COMPUTE.get(hc.report, _eval_f1_check)
-            actual, status, samples = eval_fn(api_calls, hc)
-            if hc.metric == "input_delta":
-                actual_str = f"{actual:+.3f}" if actual is not None else "—"
-            else:
-                actual_str = f"{actual:.4f}" if actual is not None else "—"
-        else:
-            status = "INSUFFICIENT"
-            actual_str = "—"
-            samples = "no data"
+        actual, status, samples = _eval_dashboard_check(hc)
+        if api_calls and hc.report not in _REPORT_COMPUTE:
+            st.warning(f"Unknown report type '{hc.report}' for health check '{hc.name}' — cannot evaluate.")
+        actual_str = f"{actual:.4f}" if actual is not None else "—"
 
         badge = _STATUS_COLOR[status]
-        _edit_key = f"editing_{hc.id}"
+        _edit_key = f"hc_editing_{hc.id}"
 
         with st.container(border=True):
             head_col, edit_col, remove_col = st.columns([10, 1, 1])
             with head_col:
                 st.markdown(f"### {badge} {hc.name}")
             with edit_col:
-                if st.button("✏", key=f"edit_{hc.id}", help="Edit this health check"):
+                if st.button("✏", key=f"hc_edit_{hc.id}", help="Edit this health check"):
                     st.session_state[_edit_key] = not st.session_state.get(_edit_key, False)
                     st.rerun()
             with remove_col:
-                if st.button("✕", key=f"rm_{hc.id}", help="Remove this health check"):
-                    save_health_checks(remove_health_check(health_checks, hc.id))
+                if st.button("✕", key=f"hc_rm_{hc.id}", help="Remove this health check"):
+                    fresh_checks = load_health_checks()
+                    save_health_checks(remove_health_check(fresh_checks, hc.id))
                     st.rerun()
 
             if st.session_state.get(_edit_key, False):
-                with st.form(key=f"form_{hc.id}"):
+                with st.form(key=f"hc_form_{hc.id}"):
                     e_name = st.text_input("Name", value=hc.name)
                     ef1, ef2, ef3 = st.columns(3)
                     e_expected = ef1.number_input("Expected value", value=hc.expected, format="%.4f")
@@ -278,7 +286,8 @@ with st.expander(label, expanded=True):
                             warning_threshold=e_warn,
                             error_threshold=e_err,
                         )
-                        save_health_checks(update_health_check(health_checks, updated))
+                        fresh_checks = load_health_checks()
+                        save_health_checks(update_health_check(fresh_checks, updated))
                         st.session_state.pop(_edit_key, None)
                         st.rerun()
                 elif cancelled:
@@ -297,12 +306,9 @@ with st.expander(label, expanded=True):
                 c2.metric("Category B", cat_b_label)
                 c3.metric("Metric", hc.metric.replace("_", " "))
                 c4.metric("Actual", actual_str)
-                c5.metric(
-                    "Expected",
-                    f"{hc.expected:+.3f}" if hc.metric == "input_delta" else f"{hc.expected:.4f}",
-                )
+                c5.metric("Expected", f"{hc.expected:.4f}")
 
                 st.caption(
-                    f"Thresholds: warn ±{hc.warning_threshold} · error ±{hc.error_threshold} · "
+                    f"Thresholds: warn ±{hc.warning_threshold:.4f} · error ±{hc.error_threshold:.4f} · "
                     f"{samples} · saved {hc.created_at}"
                 )

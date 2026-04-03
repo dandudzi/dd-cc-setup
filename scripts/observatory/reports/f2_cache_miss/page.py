@@ -19,16 +19,14 @@ from scripts.observatory.data.health_checks import (
     compute_actual_value,
     compute_status,
     load_health_checks,
-    remove_health_check,
     save_health_checks,
-    update_health_check,
 )
 from scripts.observatory.data.parser import ApiCall, discover_transcripts
 from scripts.observatory.data.tool_categories import CATEGORIES
-from scripts.observatory.data.transcript_loader import load_api_calls
+from scripts.observatory.data.transcript_loader import get_base_dir, load_api_calls
 from scripts.observatory.reports.f2_cache_miss.compute import CacheMissStats, compute_cache_miss, table_height
+from scripts.observatory.widgets.health_check_form import render_saved_checks
 
-_BASE_DIR = Path.home() / ".claude" / "projects"
 _CATEGORY_KEYS = list(CATEGORIES.keys())
 _STATUS_COLOR = {
     "OK":           "🟢",
@@ -40,10 +38,6 @@ _ABS_METRIC_LABELS = {
     "miss_rate":        "Miss rate  (single value)",
     "mean_miss_tokens": "Mean miss tokens  (single value)",
 }
-_PAIR_METRIC_LABELS = {
-    "miss_rate_delta": "Miss rate delta  (cat_a − cat_b)",
-}
-
 # ---------------------------------------------------------------------------
 # Sidebar — filters
 # ---------------------------------------------------------------------------
@@ -53,7 +47,7 @@ st.sidebar.title("Filters")
 
 @st.cache_data(show_spinner=False)
 def _all_transcripts() -> list:
-    return discover_transcripts(_BASE_DIR)
+    return discover_transcripts(get_base_dir())
 
 
 all_tf = _all_transcripts()
@@ -351,48 +345,55 @@ with st.expander("Save as Health Check"):
         if abs_cat == "Overall":
             _cat_key = OVERALL_CATEGORY
             if abs_metric == "miss_rate":
-                _default_actual = result["overall_miss_rate"]
+                _default_actual: float = result["overall_miss_rate"]
+                _has_abs_data = True
             else:
                 _ct = result["overall_miss_tokens"]
                 _cm = result["overall_miss_turns"]
-                _default_actual = _ct / _cm if _cm > 0 else 0.0
+                _has_abs_data = _cm > 0
+                _default_actual = _ct / _cm if _has_abs_data else 0.0
         else:
             _s = stats_by_cat.get(abs_cat)
             if _s and _s.total_turns > 0:
+                _has_abs_data = True
                 if abs_metric == "miss_rate":
                     _default_actual = _s.miss_rate
                 else:
                     _default_actual = _s.mean_miss_tokens
             else:
+                _has_abs_data = False
                 _default_actual = 0.0
             _cat_key = abs_cat
 
-        default_name = f"{abs_cat} — {_ABS_METRIC_LABELS[abs_metric].split('  ')[0]}"
-        hc_name = st.text_input("Name", value=default_name, key="abs_name")
+        if not _has_abs_data:
+            st.warning("Insufficient data to calibrate — no turns for this category.")
+        else:
+            default_name = f"{abs_cat} — {_ABS_METRIC_LABELS[abs_metric].split('  ')[0]}"
+            hc_name = st.text_input("Name", value=default_name, key="abs_name")
 
-        c1, c2, c3 = st.columns(3)
-        hc_expected = c1.number_input("Expected value", value=round(_default_actual, 6), format="%.6f")
-        hc_warn = c2.number_input("Warning threshold (±)", value=0.005, format="%.6f")
-        hc_err = c3.number_input("Error threshold (±)", value=0.015, format="%.6f")
+            c1, c2, c3 = st.columns(3)
+            hc_expected = c1.number_input("Expected value", value=round(_default_actual, 6), format="%.6f")
+            hc_warn = c2.number_input("Warning threshold (±)", value=0.005, format="%.6f")
+            hc_err = c3.number_input("Error threshold (±)", value=0.015, format="%.6f")
 
-        if st.button("Save Absolute Health Check", type="primary"):
-            if not hc_name.strip():
-                st.error("Name is required.")
-            elif hc_warn >= hc_err:
-                st.error("Warning threshold must be less than error threshold.")
-            else:
-                hc = HealthCheck.create(
-                    name=hc_name.strip(),
-                    category_a=_cat_key,
-                    category_b=None,
-                    metric=abs_metric,
-                    expected=hc_expected,
-                    warning_threshold=hc_warn,
-                    error_threshold=hc_err,
-                    report="f2_cache_miss",
-                )
-                save_health_checks(add_health_check(load_health_checks(), hc))
-                st.success(f"Health check **{hc_name}** saved.")
+            if st.button("Save Absolute Health Check", type="primary"):
+                if not hc_name.strip():
+                    st.error("Name is required.")
+                elif hc_warn >= hc_err:
+                    st.error("Warning threshold must be less than error threshold.")
+                else:
+                    hc = HealthCheck.create(
+                        name=hc_name.strip(),
+                        category_a=_cat_key,
+                        category_b=None,
+                        metric=abs_metric,
+                        expected=hc_expected,
+                        warning_threshold=hc_warn,
+                        error_threshold=hc_err,
+                        report="f2_cache_miss",
+                    )
+                    save_health_checks(add_health_check(load_health_checks(), hc))
+                    st.success(f"Health check **{hc_name}** saved.")
 
     else:  # Pairwise
         col_a, col_b = st.columns(2)
@@ -402,139 +403,87 @@ with st.expander("Save as Health Check"):
 
         _sa = stats_by_cat.get(pair_a)
         _sb = stats_by_cat.get(pair_b)
-        _actual_delta = (
-            (_sa.miss_rate - _sb.miss_rate)
-            if _sa and _sb and _sa.total_turns > 0 and _sb.total_turns > 0
-            else 0.0
+        _has_pair_data = bool(_sa and _sb and _sa.total_turns > 0 and _sb.total_turns > 0)
+        _actual_delta: float = (
+            (_sa.miss_rate - _sb.miss_rate) if _has_pair_data else 0.0  # type: ignore[union-attr]
         )
 
-        default_name_pair = f"{pair_a} vs {pair_b} — miss rate delta"
-        hc_name_pair = st.text_input("Name", value=default_name_pair, key="pair_name")
+        if not _has_pair_data:
+            st.warning("Insufficient data to calibrate — one or both categories have no turns.")
+        else:
+            default_name_pair = f"{pair_a} vs {pair_b} — miss rate delta"
+            hc_name_pair = st.text_input("Name", value=default_name_pair, key="pair_name")
 
-        pc1, pc2, pc3 = st.columns(3)
-        hc_exp_pair = pc1.number_input("Expected value", value=round(_actual_delta, 6), format="%.6f", key="pair_exp")
-        hc_warn_pair = pc2.number_input("Warning threshold (±)", value=0.01, format="%.6f", key="pair_warn")
-        hc_err_pair = pc3.number_input("Error threshold (±)", value=0.03, format="%.6f", key="pair_err")
+            pc1, pc2, pc3 = st.columns(3)
+            hc_exp_pair = pc1.number_input("Expected value", value=round(_actual_delta, 6), format="%.6f", key="pair_exp")
+            hc_warn_pair = pc2.number_input("Warning threshold (±)", value=0.01, format="%.6f", key="pair_warn")
+            hc_err_pair = pc3.number_input("Error threshold (±)", value=0.03, format="%.6f", key="pair_err")
 
-        if st.button("Save Pairwise Health Check", type="primary"):
-            if not hc_name_pair.strip():
-                st.error("Name is required.")
-            elif hc_warn_pair >= hc_err_pair:
-                st.error("Warning threshold must be less than error threshold.")
-            else:
-                hc = HealthCheck.create(
-                    name=hc_name_pair.strip(),
-                    category_a=pair_a,
-                    category_b=pair_b,
-                    metric="miss_rate_delta",
-                    expected=hc_exp_pair,
-                    warning_threshold=hc_warn_pair,
-                    error_threshold=hc_err_pair,
-                    report="f2_cache_miss",
-                )
-                save_health_checks(add_health_check(load_health_checks(), hc))
-                st.success(f"Health check **{hc_name_pair}** saved.")
+            if st.button("Save Pairwise Health Check", type="primary"):
+                if not hc_name_pair.strip():
+                    st.error("Name is required.")
+                elif hc_warn_pair >= hc_err_pair:
+                    st.error("Warning threshold must be less than error threshold.")
+                else:
+                    hc = HealthCheck.create(
+                        name=hc_name_pair.strip(),
+                        category_a=pair_a,
+                        category_b=pair_b,
+                        metric="miss_rate_delta",
+                        expected=hc_exp_pair,
+                        warning_threshold=hc_warn_pair,
+                        error_threshold=hc_err_pair,
+                        report="f2_cache_miss",
+                    )
+                    save_health_checks(add_health_check(load_health_checks(), hc))
+                    st.success(f"Health check **{hc_name_pair}** saved.")
 
 # ---------------------------------------------------------------------------
 # Related health checks for this report
 # ---------------------------------------------------------------------------
 
 st.divider()
-_all_hc = load_health_checks()
-_related = [hc for hc in _all_hc if hc.report == "f2_cache_miss"]
 
-with st.expander(f"Saved Health Checks ({len(_related)})", expanded=False):
-    if not _related:
-        st.caption("No health checks saved yet. Use the form above to add one.")
+
+def _eval_f2_check(hc: HealthCheck) -> tuple[float | None, str, str]:
+    """Evaluate an F2 health check. Returns (actual, status, samples)."""
+    # Compute current actual value
+    if hc.metric == "miss_rate":
+        if hc.category_a == OVERALL_CATEGORY:
+            _a_rate = result["overall_miss_rate"]
+        else:
+            _s = stats_by_cat.get(hc.category_a)
+            _a_rate = _s.miss_rate if _s and _s.total_turns > 0 else None
+        _act = compute_actual_value(
+            None, None, None, None, hc.metric,
+            a_miss_rate=_a_rate,
+        )
+    elif hc.metric == "miss_rate_delta":
+        _sa2 = stats_by_cat.get(hc.category_a or "")
+        _sb2 = stats_by_cat.get(hc.category_b or "")
+        _act = compute_actual_value(
+            None, None, None, None, hc.metric,
+            a_miss_rate=_sa2.miss_rate if _sa2 and _sa2.total_turns > 0 else None,
+            b_miss_rate=_sb2.miss_rate if _sb2 and _sb2.total_turns > 0 else None,
+        )
+    elif hc.metric == "mean_miss_tokens":
+        if hc.category_a == OVERALL_CATEGORY:
+            _mt = result["overall_miss_tokens"]
+            _mc = result["overall_miss_turns"]
+            _a_mt = _mt / _mc if _mc > 0 else None
+        else:
+            _s3 = stats_by_cat.get(hc.category_a)
+            _a_mt = _s3.mean_miss_tokens if _s3 and _s3.miss_turns > 0 else None
+        _act = compute_actual_value(
+            None, None, None, None, hc.metric,
+            a_mean_miss_tokens=_a_mt,
+        )
     else:
-        for hc in _related:
-            # Compute current actual value
-            if hc.metric == "miss_rate":
-                if hc.category_a == OVERALL_CATEGORY:
-                    _a_rate = result["overall_miss_rate"]
-                else:
-                    _s = stats_by_cat.get(hc.category_a)
-                    _a_rate = _s.miss_rate if _s and _s.total_turns > 0 else None
-                _act = compute_actual_value(
-                    None, None, None, None, hc.metric,
-                    a_miss_rate=_a_rate,
-                )
-            elif hc.metric == "miss_rate_delta":
-                _sa2 = stats_by_cat.get(hc.category_a or "")
-                _sb2 = stats_by_cat.get(hc.category_b or "")
-                _act = compute_actual_value(
-                    None, None, None, None, hc.metric,
-                    a_miss_rate=_sa2.miss_rate if _sa2 and _sa2.total_turns > 0 else None,
-                    b_miss_rate=_sb2.miss_rate if _sb2 and _sb2.total_turns > 0 else None,
-                )
-            elif hc.metric == "mean_miss_tokens":
-                if hc.category_a == OVERALL_CATEGORY:
-                    _mt = result["overall_miss_tokens"]
-                    _mc = result["overall_miss_turns"]
-                    _a_mt = _mt / _mc if _mc > 0 else None
-                else:
-                    _s3 = stats_by_cat.get(hc.category_a)
-                    _a_mt = _s3.mean_miss_tokens if _s3 and _s3.miss_turns > 0 else None
-                _act = compute_actual_value(
-                    None, None, None, None, hc.metric,
-                    a_mean_miss_tokens=_a_mt,
-                )
-            else:
-                _act = None
+        _act = None
 
-            _status = compute_status(hc, _act)
-            _act_str = f"{_act:.4f}" if _act is not None else "—"
-            _badge = _STATUS_COLOR[_status]
-            _edit_key = f"f2_editing_{hc.id}"
+    _status = compute_status(hc, _act)
+    _samples = f"{result['single_tool_turns']:,} turns"
+    return _act, _status, _samples
 
-            _cat_b_label = hc.category_b if hc.category_b else "—"
-            _cat_a_label = "Overall" if hc.category_a == OVERALL_CATEGORY else hc.category_a
 
-            _hc_col, _edit_col, _rm_col = st.columns([10, 1, 1])
-            with _hc_col:
-                st.markdown(
-                    f"{_badge} **{hc.name}** &nbsp; "
-                    f"`{_cat_a_label}` vs `{_cat_b_label}` · "
-                    f"{hc.metric.replace('_', ' ')} · "
-                    f"actual **{_act_str}** · expected {hc.expected:.4f}"
-                )
-            with _edit_col:
-                if st.button("✏", key=f"f2_edit_{hc.id}", help="Edit"):
-                    st.session_state[_edit_key] = not st.session_state.get(_edit_key, False)
-                    st.rerun()
-            with _rm_col:
-                if st.button("✕", key=f"f2_rm_{hc.id}", help="Remove"):
-                    save_health_checks(remove_health_check(load_health_checks(), hc.id))
-                    st.rerun()
-
-            if st.session_state.get(_edit_key, False):
-                with st.form(key=f"f2_form_{hc.id}"):
-                    _e_name = st.text_input("Name", value=hc.name)
-                    _ef1, _ef2, _ef3 = st.columns(3)
-                    _e_expected = _ef1.number_input("Expected value", value=hc.expected, format="%.6f")
-                    _e_warn = _ef2.number_input("Warning threshold (±)", value=hc.warning_threshold, format="%.6f")
-                    _e_err = _ef3.number_input("Error threshold (±)", value=hc.error_threshold, format="%.6f")
-                    _save_col, _cancel_col = st.columns([1, 5])
-                    _submitted = _save_col.form_submit_button("Save", type="primary")
-                    _cancelled = _cancel_col.form_submit_button("Cancel")
-
-                if _submitted:
-                    if not _e_name.strip():
-                        st.error("Name is required.")
-                    elif _e_warn >= _e_err:
-                        st.error("Warning threshold must be less than error threshold.")
-                    else:
-                        import dataclasses
-                        _updated = dataclasses.replace(
-                            hc,
-                            name=_e_name.strip(),
-                            expected=_e_expected,
-                            warning_threshold=_e_warn,
-                            error_threshold=_e_err,
-                        )
-                        save_health_checks(update_health_check(load_health_checks(), _updated))
-                        st.session_state.pop(_edit_key, None)
-                        st.rerun()
-                elif _cancelled:
-                    st.session_state.pop(_edit_key, None)
-                    st.rerun()
+render_saved_checks("f2_cache_miss", load_health_checks(), _eval_f2_check)

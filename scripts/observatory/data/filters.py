@@ -40,7 +40,7 @@ def filter_transcripts(
     result: list[TranscriptFile] = []
     for t in transcripts:
         if spec.projects is not None:
-            if project_from_path(t.path) not in spec.projects:
+            if t.project not in spec.projects:
                 continue
         if spec.session_ids is not None:
             if t.session_id not in spec.session_ids:
@@ -60,7 +60,7 @@ def filter_transcripts(
 
 def get_available_projects(transcripts: list[TranscriptFile]) -> list[str]:
     """Return sorted unique project names from transcript list."""
-    return sorted({project_from_path(t.path) for t in transcripts})
+    return sorted({t.project for t in transcripts})
 
 
 def get_available_sessions(
@@ -69,5 +69,5 @@ def get_available_sessions(
 ) -> list[str]:
     """Return sorted unique session IDs, optionally filtered to one project."""
     if project is not None:
-        transcripts = [t for t in transcripts if project_from_path(t.path) == project]
+        transcripts = [t for t in transcripts if t.project == project]
     return sorted({t.session_id for t in transcripts})

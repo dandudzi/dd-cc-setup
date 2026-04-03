@@ -21,6 +21,11 @@ def _default_base_dir() -> Path:
     return Path.home() / ".claude" / "projects"
 
 
+def get_base_dir() -> Path:
+    """Public accessor for the transcript root (respects OBSERVATORY_DATA_DIR)."""
+    return _default_base_dir()
+
+
 def load_api_calls(
     spec: FilterSpec,
     base_dir: Path | None = None,

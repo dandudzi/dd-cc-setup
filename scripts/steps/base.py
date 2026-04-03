@@ -36,17 +36,33 @@ def _redirect_for_read(context: dict) -> str:
 
 
 def check_code_index_fresh(context: dict) -> dict:
-    """Record code index freshness; default to fresh in observe-only mode."""
+    """PHASE_1_STUB: Record code index freshness.
+
+    In Phase 1 (observe-only), `index_fresh` is always None in the context
+    (see models.py::build_initial_context), so this step always defaults to
+    True and never triggers the abort-on-stale path in engine.py.
+
+    Phase 2: wire a real freshness probe here and remove this stub note.
+    """
     is_fresh = context.get("index_fresh")
     if is_fresh is None:
+        # Always None in Phase 1 — default to fresh so the engine never blocks.
         is_fresh = True
     return _clone(context, index_fresh=bool(is_fresh))
 
 
 def check_doc_index_fresh(context: dict) -> dict:
-    """Record doc index freshness; default to fresh in observe-only mode."""
+    """PHASE_1_STUB: Record doc index freshness.
+
+    In Phase 1 (observe-only), `index_fresh` is always None in the context
+    (see models.py::build_initial_context), so this step always defaults to
+    True and never triggers the abort-on-stale path in engine.py.
+
+    Phase 2: wire a real freshness probe here and remove this stub note.
+    """
     is_fresh = context.get("index_fresh")
     if is_fresh is None:
+        # Always None in Phase 1 — default to fresh so the engine never blocks.
         is_fresh = True
     return _clone(context, index_fresh=bool(is_fresh))
 

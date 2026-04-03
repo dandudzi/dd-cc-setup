@@ -88,6 +88,45 @@ class TestLoadSave:
 
 
 # ---------------------------------------------------------------------------
+# Load/save robustness (Finding #9)
+# ---------------------------------------------------------------------------
+
+class TestLoadSaveRobustness:
+    def test_load_returns_empty_on_invalid_json(self, tmp_path):
+        """Corrupt JSON file → returns [] with warning, does not crash."""
+        path = tmp_path / "hc.json"
+        path.write_text("not valid json", encoding="utf-8")
+        result = load_health_checks(path)
+        assert result == []
+
+    def test_load_skips_invalid_entries_keeps_valid(self, tmp_path):
+        """Array with one valid + one missing-field entry → only valid returned."""
+        from dataclasses import asdict
+        valid = asdict(_make(name="valid"))
+        invalid = {"bad_field": "no required fields here"}
+        path = tmp_path / "hc.json"
+        path.write_text(json.dumps([valid, invalid]), encoding="utf-8")
+        result = load_health_checks(path)
+        assert len(result) == 1
+        assert result[0].name == "valid"
+
+    def test_save_produces_valid_json_after_save(self, tmp_path):
+        """File contents are valid JSON immediately after save."""
+        path = tmp_path / "hc.json"
+        save_health_checks([_make(name="atomic")], path)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert isinstance(data, list)
+        assert data[0]["name"] == "atomic"
+
+    def test_save_no_leftover_tmp_file(self, tmp_path):
+        """After a successful save, no .tmp file is left behind."""
+        path = tmp_path / "hc.json"
+        save_health_checks([_make()], path)
+        tmp_file = path.with_suffix(".tmp")
+        assert not tmp_file.exists()
+
+
+# ---------------------------------------------------------------------------
 # add / remove
 # ---------------------------------------------------------------------------
 
@@ -249,6 +288,9 @@ class TestComputeActualValue:
 
     def test_content_ratio_none_when_b_content_missing(self):
         assert compute_actual_value(None, 968.0, None, None, "content_ratio") is None
+
+    def test_content_ratio_none_when_a_content_zero(self):
+        assert compute_actual_value(None, 0.0, None, 570.0, "content_ratio") is None
 
 
 # ---------------------------------------------------------------------------

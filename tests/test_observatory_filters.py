@@ -18,10 +18,11 @@ from scripts.observatory.data.parser import TranscriptFile
 # ---------------------------------------------------------------------------
 
 
-def _transcript(path: Path, session_id: str = "sess-1") -> TranscriptFile:
+def _transcript(path: Path, session_id: str = "sess-1", project: str | None = None) -> TranscriptFile:
     return TranscriptFile(
         path=path,
         session_id=session_id,
+        project=project if project is not None else path.parent.name,
         is_subagent=False,
         agent_id=None,
         agent_type=None,
@@ -165,3 +166,49 @@ class TestGetAvailableSessions:
         t1 = _transcript(tmp_path / "proj-a" / "s1.jsonl", "s1")
         t2 = _transcript(tmp_path / "proj-b" / "s2.jsonl", "s2")
         assert get_available_sessions([t1, t2], project="proj-a") == ["s1"]
+
+
+# ---------------------------------------------------------------------------
+# Subagent project assignment (Finding #5)
+# ---------------------------------------------------------------------------
+
+class TestDiscoverTranscriptsProject:
+    def test_top_level_project_set(self, tmp_path: Path) -> None:
+        """Top-level session transcript gets project = parent dir name."""
+        from scripts.observatory.data.parser import discover_transcripts
+        proj = tmp_path / "my-project"
+        proj.mkdir()
+        (proj / "session-abc.jsonl").write_text("")
+        results = discover_transcripts(tmp_path)
+        assert len(results) == 1
+        assert results[0].project == "my-project"
+
+    def test_subagent_project_is_parent_dir_not_agent_dir(self, tmp_path: Path) -> None:
+        """Subagent transcript project = project dir name, NOT the agent subdir name."""
+        from scripts.observatory.data.parser import discover_transcripts
+        proj = tmp_path / "project-a"
+        agent_dir = proj / "agent-123"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "session-xyz.jsonl").write_text("")
+        results = discover_transcripts(tmp_path)
+        assert len(results) == 1
+        assert results[0].project == "project-a"
+        assert results[0].project != "agent-123"
+
+
+# ---------------------------------------------------------------------------
+# get_base_dir respects env var (Finding #6)
+# ---------------------------------------------------------------------------
+
+class TestGetBaseDir:
+    def test_returns_default_when_no_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pathlib import Path
+        from scripts.observatory.data.transcript_loader import get_base_dir
+        monkeypatch.delenv("OBSERVATORY_DATA_DIR", raising=False)
+        result = get_base_dir()
+        assert result == Path.home() / ".claude" / "projects"
+
+    def test_respects_env_var(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from scripts.observatory.data.transcript_loader import get_base_dir
+        monkeypatch.setenv("OBSERVATORY_DATA_DIR", str(tmp_path))
+        assert get_base_dir() == tmp_path

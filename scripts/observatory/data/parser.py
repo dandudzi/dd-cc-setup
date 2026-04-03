@@ -29,6 +29,7 @@ class TranscriptFile:
 
     path: Path
     session_id: str
+    project: str
     is_subagent: bool
     agent_id: str | None
     agent_type: str | None
@@ -103,6 +104,7 @@ def discover_transcripts(base_dir: Path) -> list[TranscriptFile]:
                 TranscriptFile(
                     path=jsonl_file,
                     session_id=jsonl_file.stem,
+                    project=project_dir.name,
                     is_subagent=False,
                     agent_id=None,
                     agent_type=None,
@@ -118,6 +120,7 @@ def discover_transcripts(base_dir: Path) -> list[TranscriptFile]:
                     TranscriptFile(
                         path=jsonl_file,
                         session_id=jsonl_file.stem,
+                        project=project_dir.name,
                         is_subagent=True,
                         agent_id=sub_dir.name,
                         agent_type=agent_type,
@@ -256,16 +259,32 @@ def deduplicate_api_calls(
     return calls
 
 
+def _get_message(entry: dict) -> dict:  # type: ignore[type-arg]
+    """Return the message dict from an entry, or {} if absent/non-dict."""
+    msg = entry.get("message")
+    if not isinstance(msg, dict):
+        if msg is not None:
+            logger.warning("Unexpected message type %s in entry — treating as missing", type(msg).__name__)
+        return {}
+    return msg
+
+
 def _get_stop_reason(entry: dict) -> str | None:  # type: ignore[type-arg]
-    return entry.get("message", {}).get("stop_reason")
+    return _get_message(entry).get("stop_reason")
 
 
 def _get_output_tokens(entry: dict) -> int:  # type: ignore[type-arg]
-    return entry.get("message", {}).get("usage", {}).get("output_tokens", 0)
+    usage = _get_message(entry).get("usage") or {}
+    if not isinstance(usage, dict):
+        return 0
+    return usage.get("output_tokens", 0)
 
 
 def _extract_tool_calls(entry: dict) -> tuple[ToolCall, ...]:  # type: ignore[type-arg]
-    content = entry.get("message", {}).get("content", [])
+    content = _get_message(entry).get("content", [])
+    if not isinstance(content, list):
+        logger.warning("Unexpected content type %s in tool_calls extraction — skipping", type(content).__name__)
+        return ()
     result = []
     for block in content:
         if not isinstance(block, dict):
@@ -290,7 +309,10 @@ def _extract_tool_calls(entry: dict) -> tuple[ToolCall, ...]:  # type: ignore[ty
 
 
 def _extract_tool_results(entry: dict) -> tuple[ToolResult, ...]:  # type: ignore[type-arg]
-    content = entry.get("message", {}).get("content", [])
+    content = _get_message(entry).get("content", [])
+    if not isinstance(content, list):
+        logger.warning("Unexpected content type %s in tool_results extraction — skipping", type(content).__name__)
+        return ()
     result = []
     for block in content:
         if not isinstance(block, dict):
@@ -316,7 +338,10 @@ def _extract_tool_results(entry: dict) -> tuple[ToolResult, ...]:  # type: ignor
 
 
 def _extract_usage(entry: dict) -> TokenUsage:  # type: ignore[type-arg]
-    usage = entry.get("message", {}).get("usage", {})
+    usage = _get_message(entry).get("usage") or {}
+    if not isinstance(usage, dict):
+        logger.warning("Unexpected usage type %s — returning zero TokenUsage", type(usage).__name__)
+        usage = {}
     cc = usage.get("cache_creation") or {}
     return TokenUsage(
         input_tokens=usage.get("input_tokens", 0),

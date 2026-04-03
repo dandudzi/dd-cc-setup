@@ -12,6 +12,8 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
+from scripts.redact import redact_tool_input
+
 
 @dataclass(frozen=True)
 class HookInput:
@@ -73,7 +75,7 @@ def build_initial_context(hook_input: HookInput) -> dict:
         "is_retry": None,
         "file_ext": None,
         "file_size": None,
-        "index_fresh": None,
+        "index_fresh": None,  # PHASE_1_STUB: always None — check_*_index_fresh always defaults True
         # Pipeline state
         "matcher_id": None,
         "category": None,
@@ -108,7 +110,9 @@ def build_observation_entry(context: dict, start_time: float) -> dict:
         "tool_use_id": context.get("tool_use_id", ""),
         "session_id": context.get("session_id", ""),
         "tool_name": context.get("tool_name", ""),
-        "tool_input": context.get("tool_input", {}),
+        "tool_input": redact_tool_input(
+            context.get("tool_name", ""), context.get("tool_input", {})
+        ),
         "hook_event_name": context.get("hook_event_name", ""),
         "matcher_id": context.get("matcher_id"),
         "category": context.get("category"),
